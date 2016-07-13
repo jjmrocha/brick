@@ -18,115 +18,113 @@
 
 -behaviour(gen_server).
 
+-define(INTRO_MSG, <<"brick">>).
+-define(INTRO_TOKEN, <<":">>).
+-define(ALL_INTERFACES, "*").
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([]).
+-export([start_link/0]).
 
-
+start_link() ->
+  gen_server:start_link(?MODULE, [], []).
 
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {broadcast}).
+-record(state, {broadcast, config}).
 
 %% init/1
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:init-1">gen_server:init/1</a>
--spec init(Args :: term()) -> Result when
-	Result :: {ok, State}
-			| {ok, State, Timeout}
-			| {ok, State, hibernate}
-			| {stop, Reason :: term()}
-			| ignore,
-	State :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
 init([]) ->
-    {ok, #state{}}.
-
+  {ok, Config} = brick_utils:get_config(node_discovery),
+  {ok, BroadcastPort} = brick_utils:get_config(broadcast_port, Config),
+  case gen_udp:open(BroadcastPort, [binary, {active, true}, {reuseaddr, true}]) of
+    {ok, BS} -> {ok, #state{broadcast = BS, config = Config}, 1000};
+    {error, Reason} -> {stop, Reason}
+  end.
 
 %% handle_call/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_call-3">gen_server:handle_call/3</a>
--spec handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) -> Result when
-	Result :: {reply, Reply, NewState}
-			| {reply, Reply, NewState, Timeout}
-			| {reply, Reply, NewState, hibernate}
-			| {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason, Reply, NewState}
-			| {stop, Reason, NewState},
-	Reply :: term(),
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity,
-	Reason :: term().
-%% ====================================================================
-handle_call(Request, From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
-
+handle_call(_Request, _From, State) ->
+  {noreply, State}.
 
 %% handle_cast/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_cast-2">gen_server:handle_cast/2</a>
--spec handle_cast(Request :: term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
-handle_cast(Msg, State) ->
-    {noreply, State}.
-
+handle_cast(_Msg, State) ->
+  {noreply, State}.
 
 %% handle_info/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_info-2">gen_server:handle_info/2</a>
--spec handle_info(Info :: timeout | term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
-handle_info(Info, State) ->
-    {noreply, State}.
-
+handle_info({udp, _Socket, _Host, _Port, Msg}, State) ->
+  check_introduction(Msg),
+  {noreply, State};
+handle_info(timeout, State = #state{config = Config}) ->
+  send_introduction(Config),
+  {noreply, State}.
 
 %% terminate/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:terminate-2">gen_server:terminate/2</a>
--spec terminate(Reason, State :: term()) -> Any :: term() when
-	Reason :: normal
-			| shutdown
-			| {shutdown, term()}
-			| term().
-%% ====================================================================
-terminate(Reason, State) ->
-    ok.
-
+terminate(_Reason, #state{broadcast = BS}) ->
+  gen_udp:close(BS),
+  ok.
 
 %% code_change/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:code_change-3">gen_server:code_change/3</a>
--spec code_change(OldVsn, State :: term(), Extra :: term()) -> Result when
-	Result :: {ok, NewState :: term()} | {error, Reason :: term()},
-	OldVsn :: Vsn | {down, Vsn},
-	Vsn :: term().
-%% ====================================================================
-code_change(OldVsn, State, Extra) ->
-    {ok, State}.
-
+code_change(_OldVsn, State, _Extra) ->
+  {ok, State}.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
+check_introduction(Msg) ->
+  case binary:split(Msg, ?INTRO_TOKEN) of
+    [?INTRO_MSG, Version, NodeBin] ->
+      Node = binary_to_atom(NodeBin, utf8),
+      error_logger:info_msg("~p: Received introduction from node ~p with version ~s\n", [?MODULE, Node, Version]),
+      brick_cluster:add_node(Node);
+    _ -> ok
+  end.
 
+send_introduction(Config) ->
+  {ok, BroadcastPort} = brick_utils:get_config(broadcast_port, Config),
+  {ok, Interface} = brick_utils:get_config(broadcast_interface, Config),
+  Msg = introduction_msg(),
+  BroadcastIPList = broadcast_ip(Interface),
+  case gen_udp:open(0, [{broadcast, true}]) of
+    {ok, S} ->
+      lists:foreach(fun({_, Ip}) -> gen_udp:send(S, Ip, BroadcastPort, Msg) end, BroadcastIPList),
+      gen_udp:close(S);
+    {error, Reason} ->
+      error_logger:error_msg("~p: Error sending introduction: ~p\n", [?MODULE, Reason])
+  end.
+
+introduction_msg() ->
+  Node = atom_to_binary(node(), utf8),
+  Version = brick_utils:version(),
+  <<?INTRO_MSG/binary, ?INTRO_TOKEN/binary, Version/binary, ?INTRO_TOKEN/binary, Node/binary>>.
+
+broadcast_ip(?ALL_INTERFACES) -> broadcast_ip();
+broadcast_ip(Interface) ->
+  AllInterfaces = broadcast_ip(),
+  lists:filter(fun({Interface, _}) -> true;
+                  (_) -> false end, AllInterfaces).
+
+broadcast_ip() ->
+  case inet:getifaddrs() of
+    {ok, NetConfig} ->
+      lists:filtermap(fun({Interface, Props}) ->
+        Flags = brick_utils:get_prop(flags, Props, []),
+        Up = lists:member(up, Flags),
+        Broadcast = lists:member(broadcast, Flags),
+        LoopBack = lists:member(loopback, Flags),
+        P2P = lists:member(pointtopoint, Flags),
+        if
+          Up =:= true, Broadcast =:= true, LoopBack /= true, P2P /= true ->
+            case brick_utils:get_prop(broadaddr, Props) of
+              undefined -> false;
+              {ok, IP} -> {true, {Interface, IP}}
+            end;
+          true -> false
+        end
+                      end, NetConfig);
+    _ -> []
+  end.

@@ -24,11 +24,11 @@
 -export([start/2, stop/1]).
 
 start(_Type, _StartArgs) ->
-	{ok, Pid} = brick_sup:start_link(),
-	{ok, Pid}.
+  {ok, Pid} = brick_sup:start_link(),
+  {ok, Pid}.
 
 stop(_State) ->
-	ok.
+  ok.
 
 %% ====================================================================
 %% Internal functions
