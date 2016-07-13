@@ -26,7 +26,7 @@
 -export([start_link/0]).
 
 start_link() ->
-  supervisor:start_link(?MODULE, []).
+	supervisor:start_link(?MODULE, []).
 
 %% ====================================================================
 %% Behavioural functions
@@ -34,11 +34,24 @@ start_link() ->
 
 %% init/1
 init([]) ->
-  Clock = {brick_hlc, {brick_hlc, start_link, []}, permanent, infinity, worker, [brick_hlc]},
-
-  Procs = [Clock],
-  {ok, {{one_for_one, 5, 60}, Procs}}.
+	Clock = {brick_hlc, {brick_hlc, start_link, []}, permanent, infinity, worker, [brick_hlc]},
+	
+	Optional = optional(),
+	Procs = [Clock] ++ Optional,
+	{ok, {{one_for_one, 5, 60}, Procs}}.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+optional() ->
+	Optional1 = if_add(node_discovery_enable, true, fun() -> 
+					{brick_cast, {brick_cast, start_link, []}, permanent, infinity, worker, [brick_cast]}
+			end, []),
+	Optional1.
+
+if_add(Prop, Value, Fun, List) ->
+	case brick_utils:get_env(Prop) of
+		Value -> [Fun()|List];
+		_ -> List
+	end.

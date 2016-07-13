@@ -19,36 +19,33 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([get_config/1, get_config/2]).
+-export([get_env/1, get_env/2]).
 -export([version/0]).
--export([get_prop/2, get_prop/3]).
+-export([get_value/2, get_value/3]).
 
-get_config(Param) -> application:get_env(brick, Param).
+get_env(Param) -> 
+	{ok, Value} = application:get_env(brick, Param),
+	Value.
 
-get_config(Param, Config) when is_list(Config) ->
-  case lists:keyfind(Param, 1, Config) of
-    {_, Value} -> {ok, Value};
-    false -> undefined
-  end;
-get_config(Param1, Param2) ->
-  {ok, Config} = get_config(Param1),
-  get_config(Param2, Config).
+get_env(Param, Config) when is_list(Config) ->
+	{_, Value} = lists:keyfind(Param, 1, Config),
+	Value;
+get_env(Param1, Param2) ->
+	Config = get_env(Param1),
+	get_env(Param2, Config).
 
 version() ->
-  {ok, Version} = application:get_key(brick, vsn),
-  atom_to_binary(Version, utf8).
+	{ok, Version} = application:get_key(brick, vsn),
+	list_to_binary(Version).
 
-get_prop(Key, Props) ->
-  case lists:keyfind(Key, 1, Props) of
-    {_, Value} -> {ok, Value};
-    false -> undefined
-  end.
+get_value(Key, Props) ->
+	get_value(Key, Props, undefined).
 
-get_prop(Key, Props, Default) ->
-  case lists:keyfind(Key, 1, Props) of
-    {_, Value} -> Value;
-    false -> Default
-  end.
+get_value(Key, Props, Default) ->
+	case lists:keyfind(Key, 1, Props) of
+		{_, Value} -> Value;
+		false -> Default
+	end.
 
 %% ====================================================================
 %% Internal functions

@@ -15,23 +15,23 @@
 %%
 
 { application, brick, [
-  {description, "Erlang cluster building material"},
-  {vsn, "0.5.0"},
-  {modules, [
-  ]},
-  {registered, [
-    brick_hlc
-  ]},
-  {applications, [
-    kernel,
-    stdlib
-  ]},
-  {mod, {brick_app, []}},
-  {env, [
-    {node_discovery_enable, true},
-    {node_discovery, [
-      {broadcast_port, 38077},
-      {broadcast_interface, "*"}
-    ]}
-  ]}
+	{description, "Erlang cluster building material"},
+	{vsn, "0.5.0"},
+	{modules, [
+	]},
+	{registered, [
+		brick_hlc
+	]},
+	{applications, [
+		kernel,
+		stdlib
+	]},
+	{mod, {brick_app, []}},
+	{env, [
+		{node_discovery_enable, true},
+		{node_discovery, [
+			{broadcast_port, 38077},
+			{broadcast_interface, "*"}
+		]}
+	]}
 ]}.
