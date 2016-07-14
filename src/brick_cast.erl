@@ -105,14 +105,14 @@ introduction_msg() ->
 	Version = brick_utils:version(),
 	<<?INTRO_MSG/binary, ?INTRO_TOKEN/binary, Version/binary, ?INTRO_TOKEN/binary, Node/binary>>.
 
-broadcast_ip(?ALL_INTERFACES) -> broadcast_ip();
+broadcast_ip(?ALL_INTERFACES) -> broadcast_ips();
 broadcast_ip(Interface) ->
-	AllInterfaces = broadcast_ip(),
+	AllInterfaces = broadcast_ips(),
 	lists:filter(fun({I, _}) when I == Interface -> true;
 			(_) -> false 
 		end, AllInterfaces).
 
-broadcast_ip() ->
+broadcast_ips() ->
 	case inet:getifaddrs() of
 		{ok, NetConfig} ->
 			lists:filtermap(fun({Interface, Props}) ->
