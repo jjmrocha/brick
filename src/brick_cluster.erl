@@ -24,19 +24,37 @@
 %% API functions
 %% ====================================================================
 -export([start_link/0]).
--export([add_node/1]).
+-export([add_node/1, remove_node/1]).
+-export([online_nodes/0, known_nodes/0]).
+-export([subscribe/0, unsubscribe/0]).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 add_node(Node) when is_atom(Node) ->
-	% TODO save
-	ok.
+	gen_server:call(?MODULE, {add_node, Node}).
 
+remove_node(Node) when is_atom(Node) ->
+	gen_server:call(?MODULE, {remove_node, Node}).
+	
+online_nodes() ->
+	gen_server:call(?MODULE, {online_nodes}).
+	
+known_nodes() ->
+	gen_server:call(?MODULE, {known_nodes}).	
+	
+subscribe() ->
+	% TODO subscribe
+	ok.
+	
+unsubscribe() ->
+	% TODO subscribe
+	ok.	
+	
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {known_nodes = {}, online_nodes = {}}).
+-record(state, {known_nodes = [], online_nodes = [], timer}).
 
 %% init/1
 init([]) ->
