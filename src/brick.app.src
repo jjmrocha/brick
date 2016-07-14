@@ -20,6 +20,7 @@
 	{modules, [
 	]},
 	{registered, [
+		brick_cluster,
 		brick_hlc
 	]},
 	{applications, [
