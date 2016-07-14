@@ -57,10 +57,10 @@ handle_cast(_Msg, State) ->
 %% handle_info/2
 handle_info({udp, _Socket, _Host, _Port, Msg}, State) ->
 	check_introduction(Msg),
-	{noreply, State};
+	{noreply, State, hibernate};
 handle_info(timeout, State = #state{config = Config}) ->
 	send_introduction(Config),
-	{noreply, State}.
+	{noreply, State, hibernate}.
 
 %% terminate/2
 terminate(_Reason, #state{broadcast = BS}) ->
