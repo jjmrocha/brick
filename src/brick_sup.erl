@@ -34,11 +34,14 @@ start_link() ->
 
 %% init/1
 init([]) ->
-	Clock = {brick_hlc, {brick_hlc, start_link, []}, permanent, infinity, worker, [brick_hlc]},
+	Cluster = #{id => brick_cluster, start => {brick_cluster, start_link, []}, restart => permanent, type => worker},
+	Clock = #{id => brick_hlc, start => {brick_hlc, start_link, []}, restart => permanent, type => worker},
 	
 	Optional = optional(),
-	Procs = [Clock] ++ Optional,
-	{ok, {{one_for_one, 5, 60}, Procs}}.
+
+	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
+	Procs = [Cluster, Clock] ++ Optional,
+	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================
 %% Internal functions
@@ -46,7 +49,10 @@ init([]) ->
 
 optional() ->
 	Optional1 = if_add(node_discovery_enable, true, fun() -> 
-					{brick_cast, {brick_cast, start_link, []}, permanent, infinity, worker, [brick_cast]}
+					#{id => brick_cast,
+                			start => {brick_cast, start_link, []},
+                			restart => permanent,
+                			type => worker}
 			end, []),
 	Optional1.
 
