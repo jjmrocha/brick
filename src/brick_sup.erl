@@ -34,13 +34,15 @@ start_link() ->
 
 %% init/1
 init([]) ->
-	Cluster = #{id => brick_cluster, start => {brick_cluster, start_link, []}, restart => permanent, type => worker},
+	State = #{id => brick_state, start => {brick_state, start_link, []}, restart => permanent, type => worker},
 	Clock = #{id => brick_hlc, start => {brick_hlc, start_link, []}, restart => permanent, type => worker},
+	Cluster = #{id => brick_cluster, start => {brick_cluster, start_link, []}, restart => permanent, type => worker},
+	Event = #{id => brick_event, start => {brick_event, start_link, []}, restart => permanent, type => worker},
 	
 	Optional = optional(),
 
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
-	Procs = [Cluster, Clock] ++ Optional,
+	Procs = [State, Clock, Cluster, Event] ++ Optional,
 	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================

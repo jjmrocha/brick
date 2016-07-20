@@ -14,28 +14,16 @@
 %% limitations under the License.
 %%
 
-{ application, brick, [
-	{description, "Erlang cluster building material"},
-	{vsn, "0.5.0"},
-	{modules, [
-	]},
-	{registered, [
-		brick_state,
-		brick_cluster,
-		brick_event,
-		brick_hlc
-	]},
-	{applications, [
-		kernel,
-		stdlib
-	]},
-	{mod, {brick_app, []}},
-	{env, [
-		{cluster_status_update_interval, 60000},
-		{node_discovery_enable, true},
-		{node_discovery, [
-			{broadcast_port, 38077},
-			{broadcast_interface, "*"}
-		]}
-	]}
-]}.
+-record(brick_event, {name, value}).
+
+-define(make_brick_event(Name, Value), #brick_event{name=Name, value=Value}).
+-define(is_brick_event(Name, Event), (is_record(Event, brick_event) andalso Name =:= Event#brick_event.name)).
+
+-define(BRICK_NEW_NODE_EVENT,'$brick_new_node').
+-define(BRICK_NODE_DELETED_EVENT,'$brick_node_deleted').
+
+-define(BRICK_NODE_UP_EVENT,'$brick_new_up').
+-define(BRICK_NODE_DOWN_EVENT,'$brick_node_down').
+
+-define(BRICK_CLUSTER_CHANGED_EVENT,'$brick_cluster_changed').
+-define(BRICK_STATE_CHANGED_EVENT,'$brick_state_changed').

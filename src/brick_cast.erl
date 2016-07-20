@@ -48,11 +48,11 @@ init([]) ->
 
 %% handle_call/3
 handle_call(_Request, _From, State) ->
-	{noreply, State}.
+	{noreply, State, hibernate}.
 
 %% handle_cast/2
 handle_cast(_Msg, State) ->
-	{noreply, State}.
+	{noreply, State, hibernate}.
 
 %% handle_info/2
 handle_info({udp, _Socket, _Host, _Port, Msg}, State) ->

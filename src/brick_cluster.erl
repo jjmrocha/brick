@@ -16,6 +16,8 @@
 
 -module(brick_cluster).
 
+-include("brick_event.hrl").
+
 -behaviour(gen_server).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -44,11 +46,11 @@ known_nodes() ->
 	gen_server:call(?MODULE, {known_nodes}).	
 	
 subscribe() ->
-	% TODO subscribe
+	brick_event:subscribe(?MODULE, self()),
 	ok.
 	
 unsubscribe() ->
-	% TODO subscribe
+	brick_event:unsubscribe(?MODULE, self()),
 	ok.	
 	
 %% ====================================================================
@@ -58,87 +60,109 @@ unsubscribe() ->
 
 %% init/1
 init([]) ->
-	{ok, #state{}}.
+	error_logger:info_msg("~p starting on [~p]...\n", [?MODULE, self()]),
+	Interval = brick_utils:get_env(cluster_status_update_interval),
+	{ok, TimerRef} = timer:send_interval(Interval, {update}),
+	{ok, #state{timer=TimerRef}, 1}.
 
 %% handle_call/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_call-3">gen_server:handle_call/3</a>
--spec handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) -> Result when
-	Result :: {reply, Reply, NewState}
-	| {reply, Reply, NewState, Timeout}
-	| {reply, Reply, NewState, hibernate}
-	| {noreply, NewState}
-	| {noreply, NewState, Timeout}
-	| {noreply, NewState, hibernate}
-	| {stop, Reason, Reply, NewState}
-	| {stop, Reason, NewState},
-	Reply :: term(),
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity,
-	Reason :: term().
-%% ====================================================================
-handle_call(Request, From, State) ->
-	Reply = ok,
-	{reply, Reply, State}.
-
+handle_call({online_nodes}, _From, State=#state{online_nodes=OnlineNodes}) ->
+	Reply = {ok, OnlineNodes},
+	{reply, Reply, State};
+handle_call({known_nodes}, _From, State=#state{known_nodes=KnownNodes}) ->
+	Reply = {ok, KnownNodes},
+	{reply, Reply, State};
+handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
+	case {net_adm:ping(Node), lists:member(Node, KnownNodes)} of
+		{pong, false} -> 
+			KnownNodes1 = [Node|KnownNodes], 
+			OnlineNodes1 = [Node|OnlineNodes],
+			erlang:monitor_node(Node, true),
+			brick_state:write_cluster_nodes(KnownNodes1),
+			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NEW_NODE_EVENT, Node)),
+			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_UP_EVENT, Node)),
+			Reply = ok,
+			State1 = State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1},
+			{reply, Reply, State1};
+		{_, true} ->
+			Reply = {error, already_member},
+			{reply, Reply, State};
+		{pang, _} ->
+			Reply = {error, node_not_online},
+			{reply, Reply, State}
+	end;
+handle_call({remove_node, Node}, _From, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
+	case lists:member(Node, KnownNodes) of
+		true ->
+			KnownNodes1 = lists:delete(Node, KnownNodes),
+			OnlineNodes1 = lists:delete(Node, OnlineNodes),
+			brick_state:write_cluster_nodes(KnownNodes1),
+			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_DELETED_EVENT, Node)),
+			if 
+				erlang:length(OnlineNodes) > erlang:length(OnlineNodes1) -> erlang:monitor_node(Node, false);
+				true -> ok
+			end,
+			Reply = ok,
+			State1 = State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1},
+			{reply, Reply, State1};
+		_ ->
+			Reply = {error, not_member},
+			{reply, Reply, State}
+	end;
+handle_call(_Request, _From, State) ->
+	{noreply, State}.
 
 %% handle_cast/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_cast-2">gen_server:handle_cast/2</a>
--spec handle_cast(Request :: term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-	| {noreply, NewState, Timeout}
-	| {noreply, NewState, hibernate}
-	| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
-handle_cast(Msg, State) ->
+handle_cast(_Msg, State) ->
 	{noreply, State}.
-
 
 %% handle_info/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_info-2">gen_server:handle_info/2</a>
--spec handle_info(Info :: timeout | term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-	| {noreply, NewState, Timeout}
-	| {noreply, NewState, hibernate}
-	| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
-handle_info(Info, State) ->
+handle_info({nodedown, Node}, State=#state{online_nodes=OnlineNodes}) ->
+	brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_DOWN_EVENT, Node)),
+	OnlineNodes1 = lists:delete(Node, OnlineNodes),
+	{noreply, State#state{online_nodes=OnlineNodes1}};
+handle_info(Event, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) when ?is_brick_event(?BRICK_CLUSTER_CHANGED_EVENT, Event) ->
+	KnownNodes1 = Event#brick_event.value,
+	notify_new_nodes(KnownNodes1, KnownNodes),
+	{ok, OnlineNodes1} = online_nodes(KnownNodes1, OnlineNodes),
+	{noreply, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
+handle_info({update}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
+	{ok, OnlineNodes1} = online_nodes(KnownNodes, OnlineNodes),
+	{noreply, State#state{online_nodes=OnlineNodes1}};
+handle_info(timeout, State) ->
+	{ok, KnownNodes} = brick_state:read_cluster_nodes(),
+	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
+	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
+handle_info(_Info, State) ->
 	{noreply, State}.
 
-
 %% terminate/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:terminate-2">gen_server:terminate/2</a>
--spec terminate(Reason, State :: term()) -> Any :: term() when
-	Reason :: normal
-	| shutdown
-	| {shutdown, term()}
-	| term().
-%% ====================================================================
-terminate(Reason, State) ->
+terminate(_Reason, #state{timer=TimerRef}) ->
+	timer:cancel(TimerRef),
 	ok.
 
-
 %% code_change/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:code_change-3">gen_server:code_change/3</a>
--spec code_change(OldVsn, State :: term(), Extra :: term()) -> Result when
-	Result :: {ok, NewState :: term()} | {error, Reason :: term()},
-	OldVsn :: Vsn | {down, Vsn},
-	Vsn :: term().
-%% ====================================================================
-code_change(OldVsn, State, Extra) ->
+code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
-
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
-
+notify_new_nodes([], _List) -> ok;
+notify_new_nodes([Node|T], List) -> 
+	case lists:member(Node, List) of
+		false -> brick_event:event(?MODULE, ?make_brick_event(?BRICK_NEW_NODE_EVENT, Node));
+		_ -> ok
+	end,
+	notify_new_nodes(T, List).
+		
+online_nodes([], List) -> {ok, List};
+online_nodes([Node|T], List) ->
+	case {net_adm:ping(Node), lists:member(Node, List)} of
+		{pong, false} -> 
+			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_UP_EVENT, Node)),
+			erlang:monitor_node(Node, true),
+			online_nodes(T, [Node|List]);
+		{_, _} -> online_nodes(T, List)
+	end.
