@@ -16,6 +16,8 @@
 
 -module(brick_event).
 
+-include("brick_event.hrl").
+
 -behaviour(gen_event).
 
 -export([init/1, handle_event/2, handle_call/2, handle_info/2, terminate/2, code_change/3]).
@@ -23,7 +25,7 @@
 %% API functions
 %% ====================================================================
 -export([subscribe/2, unsubscribe/2, start_link/0]).
--export([event/2]).
+-export([event/3]).
 
 start_link() ->
 	gen_event:start_link({local, ?MODULE}).
@@ -34,7 +36,8 @@ subscribe(Type, Susbcriber) ->
 unsubscribe(Type, Susbcriber) ->
 	gen_event:delete_handler(?MODULE, {?MODULE, {Type, Susbcriber}}, []).
 
-event(Type, Event) ->
+event(Type, Name, Value) ->
+	Event = #brick_event{name=Name, value=Value},
 	gen_event:notify(?MODULE, {Type, Event}).
 
 %% ====================================================================

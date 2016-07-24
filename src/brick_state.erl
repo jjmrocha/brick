@@ -49,12 +49,12 @@ write_state(_Namespace, _State) ->
 	% TODO To be done
 	ok.
 
-subscribe(Namespace) ->
-	brick_event:subscribe({?MODULE, Namespace}, self()),
+subscribe(StateName) ->
+	brick_event:subscribe({?MODULE, StateName}, self()),
 	ok.
 	
-unsubscribe(Namespace) ->
-	brick_event:unsubscribe({?MODULE, Namespace}, self()),
+unsubscribe(StateName) ->
+	brick_event:unsubscribe({?MODULE, StateName}, self()),
 	ok.	
 
 %% ====================================================================

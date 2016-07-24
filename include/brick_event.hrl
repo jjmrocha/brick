@@ -16,7 +16,6 @@
 
 -record(brick_event, {name, value}).
 
--define(make_brick_event(Name, Value), #brick_event{name=Name, value=Value}).
 -define(is_brick_event(Name, Event), (is_record(Event, brick_event) andalso Name =:= Event#brick_event.name)).
 
 -define(BRICK_NEW_NODE_EVENT,'$brick_new_node').
@@ -24,6 +23,8 @@
 
 -define(BRICK_NODE_UP_EVENT,'$brick_new_up').
 -define(BRICK_NODE_DOWN_EVENT,'$brick_node_down').
+
+-define(BRICK_CLUSTER_TOPOLOGY_STATE,'$brick_cluster_topology').
 
 -define(BRICK_CLUSTER_CHANGED_EVENT,'$brick_cluster_changed').
 -define(BRICK_STATE_CHANGED_EVENT,'$brick_state_changed').

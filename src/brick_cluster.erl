@@ -79,8 +79,8 @@ handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, onlin
 			OnlineNodes1 = [Node|OnlineNodes],
 			erlang:monitor_node(Node, true),
 			brick_state:write_cluster_nodes(KnownNodes1),
-			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NEW_NODE_EVENT, Node)),
-			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_UP_EVENT, Node)),
+			brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
+			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 			Reply = ok,
 			State1 = State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1},
 			{reply, Reply, State1};
@@ -97,7 +97,7 @@ handle_call({remove_node, Node}, _From, State=#state{known_nodes=KnownNodes, onl
 			KnownNodes1 = lists:delete(Node, KnownNodes),
 			OnlineNodes1 = lists:delete(Node, OnlineNodes),
 			brick_state:write_cluster_nodes(KnownNodes1),
-			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_DELETED_EVENT, Node)),
+			brick_event:event(?MODULE, ?BRICK_NODE_DELETED_EVENT, Node),
 			if 
 				erlang:length(OnlineNodes) > erlang:length(OnlineNodes1) -> erlang:monitor_node(Node, false);
 				true -> ok
@@ -118,7 +118,7 @@ handle_cast(_Msg, State) ->
 
 %% handle_info/2
 handle_info({nodedown, Node}, State=#state{online_nodes=OnlineNodes}) ->
-	brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_DOWN_EVENT, Node)),
+	brick_event:event(?MODULE, ?BRICK_NODE_DOWN_EVENT, Node),
 	OnlineNodes1 = lists:delete(Node, OnlineNodes),
 	{noreply, State#state{online_nodes=OnlineNodes1}};
 handle_info(Event, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) when ?is_brick_event(?BRICK_CLUSTER_CHANGED_EVENT, Event) ->
@@ -130,6 +130,7 @@ handle_info({update}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNo
 	{ok, OnlineNodes1} = online_nodes(KnownNodes, OnlineNodes),
 	{noreply, State#state{online_nodes=OnlineNodes1}};
 handle_info(timeout, State) ->
+	brick_state:subscribe(?BRICK_CLUSTER_TOPOLOGY_STATE),
 	{ok, KnownNodes} = brick_state:read_cluster_nodes(),
 	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
 	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
@@ -152,7 +153,7 @@ code_change(_OldVsn, State, _Extra) ->
 notify_new_nodes([], _List) -> ok;
 notify_new_nodes([Node|T], List) -> 
 	case lists:member(Node, List) of
-		false -> brick_event:event(?MODULE, ?make_brick_event(?BRICK_NEW_NODE_EVENT, Node));
+		false -> brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node);
 		_ -> ok
 	end,
 	notify_new_nodes(T, List).
@@ -161,7 +162,7 @@ online_nodes([], List) -> {ok, List};
 online_nodes([Node|T], List) ->
 	case {net_adm:ping(Node), lists:member(Node, List)} of
 		{pong, false} -> 
-			brick_event:event(?MODULE, ?make_brick_event(?BRICK_NODE_UP_EVENT, Node)),
+			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 			erlang:monitor_node(Node, true),
 			online_nodes(T, [Node|List]);
 		{_, _} -> online_nodes(T, List)
