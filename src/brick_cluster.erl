@@ -130,8 +130,8 @@ handle_info({update}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNo
 	{ok, OnlineNodes1} = online_nodes(KnownNodes, OnlineNodes),
 	{noreply, State#state{online_nodes=OnlineNodes1}};
 handle_info(timeout, State) ->
-	brick_state:subscribe(?BRICK_CLUSTER_TOPOLOGY_STATE),
-	{ok, KnownNodes} = brick_state:read_cluster_nodes(),
+	brick_state:subscribe_topology_events(),
+	{ok, KnownNodes} = brick_state:read_topology_state(),
 	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
 	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
 handle_info(_Info, State) ->
