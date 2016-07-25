@@ -78,7 +78,7 @@ handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, onlin
 			KnownNodes1 = [Node|KnownNodes], 
 			OnlineNodes1 = [Node|OnlineNodes],
 			erlang:monitor_node(Node, true),
-			brick_state:write_cluster_nodes(KnownNodes1),
+			brick_state:save_topology_state(KnownNodes1),
 			brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
 			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 			Reply = ok,
@@ -96,7 +96,7 @@ handle_call({remove_node, Node}, _From, State=#state{known_nodes=KnownNodes, onl
 		true ->
 			KnownNodes1 = lists:delete(Node, KnownNodes),
 			OnlineNodes1 = lists:delete(Node, OnlineNodes),
-			brick_state:write_cluster_nodes(KnownNodes1),
+			brick_state:save_topology_state(KnownNodes1),
 			brick_event:event(?MODULE, ?BRICK_NODE_DELETED_EVENT, Node),
 			if 
 				erlang:length(OnlineNodes) > erlang:length(OnlineNodes1) -> erlang:monitor_node(Node, false);
