@@ -31,8 +31,9 @@
 	]},
 	{mod, {brick_app, []}},
 	{env, [
+		{cluster_name, brick},
 		{cluster_status_update_interval, 60000},
-		{node_discovery_enable, true},
+		{node_discovery_enable, false},
 		{node_discovery, [
 			{broadcast_port, 38077},
 			{broadcast_interface, "*"}
