@@ -20,7 +20,7 @@
 %% API functions
 %% ====================================================================
 -export([get_env/1, get_env/2]).
--export([version/0]).
+-export([version/0, cluster_name/0]).
 -export([get_value/2, get_value/3]).
 
 get_env(Param) -> 
@@ -37,6 +37,10 @@ get_env(Param1, Param2) ->
 version() ->
 	{ok, Version} = application:get_key(brick, vsn),
 	list_to_binary(Version).
+
+cluster_name() ->	
+	{ok, Value} = application:get_env(brick, cluster_name),
+	atom_to_binary(Value, utf8).
 
 get_value(Key, Props) ->
 	get_value(Key, Props, undefined).
