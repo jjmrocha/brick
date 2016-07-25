@@ -18,6 +18,8 @@
 
 -include("brick_event.hrl").
 
+-define(BRICK_CLUSTER_TOPOLOGY_STATE, '$brick_cluster_topology').
+
 -behaviour(gen_server).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -34,21 +36,17 @@
 start_link() ->
 	gen_event:start_link({local, ?MODULE}).
 
-read_cluster_nodes() ->
-	% TODO To be done
-	{ok, []}.
+read_topology_state() ->
+	read_state(?BRICK_CLUSTER_TOPOLOGY_STATE).
 
-write_cluster_nodes(_Nodes) ->
-	% TODO To be done
-	ok.
+write_topology_state(Nodes) ->
+	write_state(?BRICK_CLUSTER_TOPOLOGY_STATE, Nodes).
 
-read_state(_Namespace) ->
-	% TODO To be done
-	{ok, []}.	
+read_state(StateName) ->
+	gen_server:call(?MODULE, {read, StateName}).	
 
-write_state(_Namespace, _State) ->
-	% TODO To be done
-	ok.
+write_state(StateName, State) ->
+	gen_server:cast(?MODULE, {write, StateName}).
 
 subscribe_topology_events() ->
 	subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
