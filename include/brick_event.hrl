@@ -24,7 +24,5 @@
 -define(BRICK_NODE_UP_EVENT,'$brick_new_up').
 -define(BRICK_NODE_DOWN_EVENT,'$brick_node_down').
 
--define(BRICK_CLUSTER_TOPOLOGY_STATE,'$brick_cluster_topology').
-
 -define(BRICK_CLUSTER_CHANGED_EVENT,'$brick_cluster_changed').
 -define(BRICK_STATE_CHANGED_EVENT,'$brick_state_changed').
