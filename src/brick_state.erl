@@ -28,8 +28,8 @@
 %% API functions
 %% ====================================================================
 -export([start_link/0]).
--export([read_topology_state/0, write_topology_state/1]).
--export([read_state/1, write_state/2]).
+-export([read_topology_state/0, save_topology_state/1]).
+-export([read_state/1, save_state/2]).
 -export([subscribe_topology_events/0, unsubscribe_topology_events/0]).
 -export([subscribe_state_events/1, unsubscribe_state_events/1]).
 
@@ -39,14 +39,14 @@ start_link() ->
 read_topology_state() ->
 	read_state(?BRICK_CLUSTER_TOPOLOGY_STATE).
 
-write_topology_state(Nodes) ->
-	write_state(?BRICK_CLUSTER_TOPOLOGY_STATE, Nodes).
+save_topology_state(Nodes) ->
+	save_state(?BRICK_CLUSTER_TOPOLOGY_STATE, Nodes).
 
 read_state(StateName) ->
 	gen_server:call(?MODULE, {read, StateName}).	
 
-write_state(StateName, State) ->
-	gen_server:cast(?MODULE, {write, StateName}).
+save_state(StateName, State) ->
+	gen_server:cast(?MODULE, {save, StateName, State}).
 
 subscribe_topology_events() ->
 	subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
