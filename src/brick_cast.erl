@@ -76,10 +76,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 
 check_introduction(Msg) ->
+	ClusterName = brick_utils:cluster_name(),
 	case binary:split(Msg, ?INTRO_TOKEN) of
-		[?INTRO_MSG, Version, NodeBin] ->
+		[?INTRO_MSG, ClusterName, Version, NodeBin] ->
 			Node = binary_to_atom(NodeBin, utf8),
-			error_logger:info_msg("~p: Received introduction from node ~p with version ~s\n", [?MODULE, Node, Version]),
+			error_logger:info_msg("~p: Received introduction for cluster ~s from node ~p with version ~s\n", [?MODULE, ClusterName, Node, Version]),
 			brick_cluster:add_node(Node);
 		_ -> ok
 	end.
@@ -103,7 +104,8 @@ send_introduction(Config) ->
 introduction_msg() ->
 	Node = atom_to_binary(node(), utf8),
 	Version = brick_utils:version(),
-	<<?INTRO_MSG/binary, ?INTRO_TOKEN/binary, Version/binary, ?INTRO_TOKEN/binary, Node/binary>>.
+	ClusterName = brick_utils:cluster_name(),
+	<<?INTRO_MSG/binary, ?INTRO_TOKEN/binary, ClusterName/binary, ?INTRO_TOKEN/binary, Version/binary, ?INTRO_TOKEN/binary, Node/binary>>.
 
 broadcast_ip(?ALL_INTERFACES) -> broadcast_ips();
 broadcast_ip(Interface) ->
