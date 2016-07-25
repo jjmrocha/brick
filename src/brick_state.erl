@@ -26,9 +26,10 @@
 %% API functions
 %% ====================================================================
 -export([start_link/0]).
--export([read_cluster_nodes/0, write_cluster_nodes/1]).
+-export([read_topology_state/0, write_topology_state/1]).
 -export([read_state/1, write_state/2]).
--export([subscribe/1, unsubscribe/1]).
+-export([subscribe_topology_events/0, unsubscribe_topology_events/0]).
+-export([subscribe_state_events/1, unsubscribe_state_events/1]).
 
 start_link() ->
 	gen_event:start_link({local, ?MODULE}).
@@ -49,11 +50,17 @@ write_state(_Namespace, _State) ->
 	% TODO To be done
 	ok.
 
-subscribe(StateName) ->
+subscribe_topology_events() ->
+	subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
+	
+unsubscribe_topology_events() ->
+	unsubscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
+	
+subscribe_state_events(StateName) ->
 	brick_event:subscribe({?MODULE, StateName}, self()),
 	ok.
 	
-unsubscribe(StateName) ->
+unsubscribe_state_events(StateName) ->
 	brick_event:unsubscribe({?MODULE, StateName}, self()),
 	ok.	
 
