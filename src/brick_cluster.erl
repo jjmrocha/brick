@@ -61,7 +61,7 @@ unsubscribe() ->
 %% init/1
 init([]) ->
 	error_logger:info_msg("~p starting on [~p]...\n", [?MODULE, self()]),
-	Interval = brick_utils:get_env(cluster_status_update_interval),
+	Interval = brick_config:get_env(cluster_status_update_interval),
 	{ok, TimerRef} = timer:send_interval(Interval, {update}),
 	{ok, #state{timer=TimerRef}, 0}.
 
