@@ -39,7 +39,7 @@ version() ->
 	list_to_binary(Version).
 
 cluster_name() ->	
-	{ok, Value} = application:get_env(brick, cluster_name),
+	Value = get_env(cluster_name),
 	atom_to_binary(Value, utf8).
 
 get_value(Key, Props) ->
