@@ -35,14 +35,13 @@ start_link() ->
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {broadcast, config}).
+-record(state, {broadcast}).
 
 %% init/1
 init([]) ->
-	Config = brick_utils:get_env(node_discovery),
-	BroadcastPort = brick_utils:get_env(broadcast_port, Config),
+	BroadcastPort = brick_config:get_env(node_discovery, broadcast_port),
 	case gen_udp:open(BroadcastPort, [binary, {active, true}, {reuseaddr, true}]) of
-		{ok, BS} -> {ok, #state{broadcast = BS, config = Config}, 1000};
+		{ok, BS} -> {ok, #state{broadcast = BS}, 1000};
 		{error, Reason} -> {stop, Reason}
 	end.
 
@@ -58,8 +57,8 @@ handle_cast(_Msg, State) ->
 handle_info({udp, _Socket, _Host, _Port, Msg}, State) ->
 	check_introduction(Msg),
 	{noreply, State, hibernate};
-handle_info(timeout, State = #state{config = Config}) ->
-	send_introduction(Config),
+handle_info(timeout, State) ->
+	send_introduction(),
 	{noreply, State, hibernate}.
 
 %% terminate/2
@@ -76,7 +75,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 
 check_introduction(Msg) ->
-	ClusterName = brick_utils:cluster_name(),
+	ClusterName = brick_system:cluster_name(),
 	case binary:split(Msg, ?INTRO_TOKEN) of
 		[?INTRO_MSG, ClusterName, Version, NodeBin] ->
 			Node = binary_to_atom(NodeBin, utf8),
@@ -85,9 +84,9 @@ check_introduction(Msg) ->
 		_ -> ok
 	end.
 
-send_introduction(Config) ->
-	BroadcastPort = brick_utils:get_env(broadcast_port, Config),
-	Interface = brick_utils:get_env(broadcast_interface, Config),
+send_introduction() ->
+	BroadcastPort = brick_config:get_env(node_discovery, broadcast_port),
+	Interface = brick_config:get_env(node_discovery, broadcast_interface),
 	Msg = introduction_msg(),
 	BroadcastIPList = broadcast_ip(Interface),
 	case gen_udp:open(0, [{broadcast, true}]) of
@@ -103,8 +102,8 @@ send_introduction(Config) ->
 
 introduction_msg() ->
 	Node = atom_to_binary(node(), utf8),
-	Version = brick_utils:version(),
-	ClusterName = brick_utils:cluster_name(),
+	Version = brick_system:version(),
+	ClusterName = brick_system:cluster_name(),
 	<<?INTRO_MSG/binary, ?INTRO_TOKEN/binary, ClusterName/binary, ?INTRO_TOKEN/binary, Version/binary, ?INTRO_TOKEN/binary, Node/binary>>.
 
 broadcast_ip(?ALL_INTERFACES) -> broadcast_ips();
