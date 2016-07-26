@@ -19,27 +19,15 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([get_env/1, get_env/2]).
 -export([version/0, cluster_name/0]).
 -export([get_value/2, get_value/3]).
-
-get_env(Param) -> 
-	{ok, Value} = application:get_env(brick, Param),
-	Value.
-
-get_env(Param, Config) when is_list(Config) ->
-	{_, Value} = lists:keyfind(Param, 1, Config),
-	Value;
-get_env(Param1, Param2) ->
-	Config = get_env(Param1),
-	get_env(Param2, Config).
 
 version() ->
 	{ok, Version} = application:get_key(brick, vsn),
 	list_to_binary(Version).
 
 cluster_name() ->	
-	Value = get_env(cluster_name),
+	Value = brick_config:get_env(cluster_name),
 	atom_to_binary(Value, utf8).
 
 get_value(Key, Props) ->
