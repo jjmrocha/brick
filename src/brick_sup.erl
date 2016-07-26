@@ -59,7 +59,7 @@ optional() ->
 	Optional1.
 
 if_add(Prop, Value, Fun, List) ->
-	case brick_utils:get_env(Prop) of
+	case brick_config:get_env(Prop) of
 		Value -> [Fun()|List];
 		_ -> List
 	end.
