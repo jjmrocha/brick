@@ -1,6 +1,6 @@
 %%
 %% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
-%%
+%% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,25 +14,35 @@
 %% limitations under the License.
 %%
 
--module(brick_config).
+-module(brick_stg_memory).
 
+-behaviour(brick_stg_handler).
+
+-define(STATE_ITEM(Name, Version, Value), {Name, Version, Value}).
+
+-export([init/1, read/2, write/4, code_change/3, terminate/1]).
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([get_env/1, get_env/2]).
 
-get_env(Param) -> 
-	{ok, Value} = application:get_env(brick, Param),
-	Value.
+init(_Args) -> {ok, []}. 
 
-get_env(Param1, Param2) ->
-	Config = get_env(Param1),
-	get_value(Param2, Config).
+read(Name, State) ->
+	case lists:keyfind(Name, 1, State) of
+		false -> {not_found, State};
+		?STATE_ITEM(_, Version, Value) -> {ok, Value, Version, State}
+	end.
+
+write(Name, Value, Version, State) -> 
+	NewState = lists:keystore(Name, 1, State, ?STATE_ITEM(Name, Version, Value)),
+	{ok, NewState}.
+
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+terminate(_State) -> ok.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
-get_value(Param, Config) ->
-	{_, Value} = lists:keyfind(Param, 1, Config),
-	Value.
+

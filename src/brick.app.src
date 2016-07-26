@@ -32,6 +32,11 @@
 	{mod, {brick_app, []}},
 	{env, [
 		{cluster_name, brick},
+		{storage_handler, brick_stg_memory},
+		{storage_handler_config, [
+			% For brick_stg_file
+			% {file_name, "persistence.state"}
+		]},
 		{cluster_status_update_interval, 60000},
 		{node_discovery_enable, false},
 		{node_discovery, [

@@ -1,6 +1,6 @@
 %%
 %% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
-%%
+%% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -14,25 +14,23 @@
 %% limitations under the License.
 %%
 
--module(brick_config).
+-module(brick_stg_handler).
 
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([get_env/1, get_env/2]).
 
-get_env(Param) -> 
-	{ok, Value} = application:get_env(brick, Param),
-	Value.
+-callback init(Args :: list()) -> 
+	{ok, State :: term()} | {stop, Reason :: term()}. 
 
-get_env(Param1, Param2) ->
-	Config = get_env(Param1),
-	get_value(Param2, Config).
+-callback read(Name :: atom(), State :: term()) -> 
+	{ok, Value :: term(), Version :: integer(), NewState :: term()} | {not_found, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}. 
 
-%% ====================================================================
-%% Internal functions
-%% ====================================================================
+-callback write(Name :: atom(), Value :: term(), Version :: integer(), State :: term()) -> 
+	{ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
-get_value(Param, Config) ->
-	{_, Value} = lists:keyfind(Param, 1, Config),
-	Value.
+-callback code_change(OldVsn :: Vsn | {down, Vsn}, State :: term(), Extra :: term()) -> 
+	{ok, NewState :: term()} | {error, Reason :: term()}.
+
+-callback terminate(State :: term()) -> 
+	Any :: term().
