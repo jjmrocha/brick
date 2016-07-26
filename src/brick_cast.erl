@@ -117,14 +117,14 @@ broadcast_ips() ->
 	case inet:getifaddrs() of
 		{ok, NetConfig} ->
 			lists:filtermap(fun({Interface, Props}) ->
-						Flags = brick_utils:get_value(flags, Props, []),
+						Flags = get_value(flags, Props, []),
 						Up = lists:member(up, Flags),
 						Broadcast = lists:member(broadcast, Flags),
 						LoopBack = lists:member(loopback, Flags),
 						P2P = lists:member(pointtopoint, Flags),
 						if
 							Up =:= true, Broadcast =:= true, LoopBack /= true, P2P /= true ->
-								case brick_utils:get_value(broadaddr, Props) of
+								case get_value(broadaddr, Props) of
 									undefined -> false;
 									IP -> {true, {Interface, IP}}
 								end;
@@ -132,4 +132,13 @@ broadcast_ips() ->
 						end
 				end, NetConfig);
 		_ -> []
+	end.
+
+get_value(Key, Props) ->
+	get_value(Key, Props, undefined).
+
+get_value(Key, Props, Default) ->
+	case lists:keyfind(Key, 1, Props) of
+		{_, Value} -> Value;
+		false -> Default
 	end.
