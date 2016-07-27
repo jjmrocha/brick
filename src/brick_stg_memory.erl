@@ -20,12 +20,16 @@
 
 -define(STATE_ITEM(Name, Version, Value), {Name, Version, Value}).
 
--export([init/1, read/2, write/4, code_change/3, terminate/1]).
+-export([init/1, names/1, read/2, write/4, code_change/3, terminate/1]).
 %% ====================================================================
 %% API functions
 %% ====================================================================
 
 init(_Args) -> {ok, []}. 
+
+names(State) -> 
+	Names = lists:map(fun(?STATE_ITEM(Name, _, _)) -> Name end, State),
+	{ok, Names, State}.
 
 read(Name, State) ->
 	case lists:keyfind(Name, 1, State) of
