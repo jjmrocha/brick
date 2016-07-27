@@ -20,7 +20,7 @@
 
 -define(STATE_ITEM(Name, Version, Value), {Name, Version, Value}).
 
--export([init/1, read/2, write/4, code_change/3, terminate/1]).
+-export([init/1, names/1, read/2, write/4, code_change/3, terminate/1]).
 %% ====================================================================
 %% API functions
 %% ====================================================================
@@ -32,6 +32,14 @@ init(Args) ->
 			{stop, invalid_configuration};
 		{_, FileName} -> {ok, FileName}
 	end. 
+
+names(FileName) -> 
+	case read_file(FileName) of
+		{ok, Data} -> 
+			Names = lists:map(fun(?STATE_ITEM(Name, _, _)) -> Name end, Data),
+			{ok, Names, FileName}.		
+		{error, Reason} -> {stop, Reason, FileName}
+	end.
 
 read(Name, FileName) ->
 	case read_file(FileName) of
@@ -62,8 +70,7 @@ terminate(_FileName) -> ok.
 %% Internal functions
 %% ====================================================================
 
-read_file(FileName) ->
-	file:script(FileName).
+read_file(FileName) -> file:script(FileName).
 
 write_file(FileName, Data) ->
 	case file:open(FileName, write) of
