@@ -37,7 +37,7 @@ names(FileName) ->
 	case read_file(FileName) of
 		{ok, Data} -> 
 			Names = lists:map(fun(?STATE_ITEM(Name, _, _)) -> Name end, Data),
-			{ok, Names, FileName}.		
+			{ok, Names, FileName};		
 		{error, Reason} -> {stop, Reason, FileName}
 	end.
 
