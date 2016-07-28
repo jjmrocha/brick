@@ -23,6 +23,7 @@
 		brick_state,
 		brick_cluster,
 		brick_event,
+		brick_gossip,
 		brick_hlc
 	]},
 	{applications, [
