@@ -57,6 +57,7 @@ handle_cast(_Msg, State) ->
 handle_info({udp, _Socket, _Host, _Port, Msg}, State) ->
 	check_introduction(Msg),
 	{noreply, State, hibernate};
+	
 handle_info(timeout, State) ->
 	send_introduction(),
 	{noreply, State, hibernate}.
