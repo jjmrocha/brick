@@ -142,23 +142,17 @@ handle_cast(_Msg, State) ->
 
 %% handle_info/2
 handle_info(timeout, State=#state{mode=Mod, data=Data, names=Names}) ->
-	try Mod:names(Data) of
+	try Mod:states(Data) of
 		{ok, List, NewData} ->
-			{NewNames, NewData1} = lists:foldr(fun(StateName, {N, D}) ->
-					case read(StateName, Mod, D) of
-						{ok, _StateValue, EncodedVersion, D1} ->
-							Version = brick_hlc:decode(EncodedVersion),
-							N1 = dict:store(StateName, Version, N),
-							{N1, D1};
-						{not_found, D1} -> {N, D1};
-						{stop, Reason, _} -> throw(Reason)
-					end					
-				end, {Names, NewData}, List).
-			{noreply, State#state{data=NewData1, names=NewNames}};
+			NewNames = lists:foldl(fun({StateName, EncodedVersion}, Dict) ->
+					Version = brick_hlc:decode(EncodedVersion),
+					dict:store(StateName, Version, Dict)				
+				end, Names, List).
+			{noreply, State#state{data=NewData, names=NewNames}};
 		{stop, Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 	catch Error:Reason -> 
 		LogArgs = [?MODULE, Mod, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:names(State) -> ~p:~p\n", LogArgs),
+		error_logger:error_msg("~p: Error while executing ~p:states(State) -> ~p:~p\n", LogArgs),
 		{stop, mod_return, State}	
 	end;
 	
