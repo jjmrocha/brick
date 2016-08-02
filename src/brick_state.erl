@@ -19,6 +19,7 @@
 -include("brick_event.hrl").
 
 -define(BRICK_CLUSTER_TOPOLOGY_STATE, '$brick_cluster_topology').
+-define(STATE_TYPE(StateName), {?MODULE, StateName}).
 
 -behaviour(gen_server).
 
@@ -55,11 +56,11 @@ unsubscribe_topology_events() ->
 	unsubscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
 	
 subscribe_state_events(StateName) ->
-	brick_event:subscribe({?MODULE, StateName}, self()),
+	brick_event:subscribe(?STATE_TYPE(StateName), self()),
 	ok.
 	
 unsubscribe_state_events(StateName) ->
-	brick_event:unsubscribe({?MODULE, StateName}, self()),
+	brick_event:unsubscribe(?STATE_TYPE(StateName), self()),
 	ok.	
 
 %% ====================================================================
@@ -83,36 +84,38 @@ init([]) ->
 	end.
 
 %% handle_call/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_call-3">gen_server:handle_call/3</a>
--spec handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) -> Result when
-	Result :: {reply, Reply, NewState}
-			| {reply, Reply, NewState, Timeout}
-			| {reply, Reply, NewState, hibernate}
-			| {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason, Reply, NewState}
-			| {stop, Reason, NewState},
-	Reply :: term(),
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity,
-	Reason :: term().
-%% ====================================================================
 handle_call({read, StateName}, _From, State=#state{mode=Mod, data=Data}) ->
-    Reply = ok,
-    {reply, Reply, State};
+	try Mod:read(StateName, Data) of
+		{ok, StateValue, Version, NewData} -> {reply, {ok, StateValue}, State#state{data=NewData}};
+		{not_found, NewData} -> {reply, {ok, not_found}, State#state{data=NewData}};
+		{stop, Reason, NewData} -> {stop, Reason, State#state{data=NewData}}
+	catch Error:Reason -> 
+		LogArgs = [?MODULE, Mod, StateName, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:read(~p, State) -> ~p:~p\n", LogArgs),
+		{stop, Reason, {error, Reason}, State}	
+	end;
     
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
 %% handle_cast/2
-handle_cast({save, StateName, StateValue}, State) ->
-	{noreply, State}.
+handle_cast({save, StateName, StateValue}, State=#state{mode=Mod, data=Data}) ->
+	Version = brick_hlc:timestamp(),
+	EncodedVersion = brick_hlc:encode(Version),
+	try Mod:write(StateName, StateValue, EncodedVersion, Data) of
+		{ok, NewData} ->
+			send_event(StateName, StateValue),
+			brick_gossip:publish(StateName, StateValue, Version),
+			{noreply, State#state{data=NewData}};
+		{stop, Reason, NewData} -> {stop, Reason, State#state{data=NewData}}
+	catch Error:Reason -> 
+		LogArgs = [?MODULE, Mod, StateName, StateValue, EncodedVersion,, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:write(~p, ~p, ~p, State) -> ~p:~p\n", LogArgs),
+		{stop, Reason, {error, Reason}, State}	
+	end;
 	
 handle_cast(_Msg, State) ->
 	{noreply, State}.
-
 
 %% handle_info/2
 %% ====================================================================
@@ -135,8 +138,8 @@ handle_info(_Info, State) ->
 terminate(_Reason, #state{mode=Mod, data=Data}) ->
 	try Mod:terminate(Data) 
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, Data, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:terminate(~p) -> ~p:~p\n", LogArgs)
+		LogArgs = [?MODULE, Mod, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:terminate(State) -> ~p:~p\n", LogArgs)
 	end.
 
 %% code_change/3
@@ -145,8 +148,8 @@ code_change(OldVsn, State=#state{mode=Mod, data=Data}, Extra) ->
 		{ok, NewData} -> {ok, State#state{data=NewData}};
 		{error, Reason} -> {error, Reason}
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, OldVsn, Data, Extra, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:change(~p, ~p, ~p) -> ~p:~p\n", LogArgs),
+		LogArgs = [?MODULE, Mod, OldVsn, Extra, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:change(~p, State, ~p) -> ~p:~p\n", LogArgs),
 		{error, Reason}
 	end.
 
@@ -154,4 +157,7 @@ code_change(OldVsn, State=#state{mode=Mod, data=Data}, Extra) ->
 %% Internal functions
 %% ====================================================================
 
-
+send_event(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE, StateValue) ->
+	brick_event:event(?STATE_TYPE(StateName), ?BRICK_CLUSTER_CHANGED_EVENT, StateValue);
+send_event(StateName, StateValue) ->
+	brick_event:event(?STATE_TYPE(StateName), ?BRICK_STATE_CHANGED_EVENT, StateValue).
