@@ -24,9 +24,13 @@
 %% API functions
 %% ====================================================================
 -export([start_link/0]).
+-export([publish/3]).
 
 start_link() ->
 	gen_event:start_link({local, ?MODULE}).
+	
+publish(StateName, StateValue, Version) ->
+	gen_server:cast(?MODULE, {publish, StateName, StateValue, Version}).
 
 %% ====================================================================
 %% Behavioural functions
