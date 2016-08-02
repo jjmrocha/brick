@@ -27,9 +27,9 @@
 
 init(_Args) -> {ok, []}. 
 
-names(State) -> 
-	Names = lists:map(fun(?STATE_ITEM(Name, _, _)) -> Name end, State),
-	{ok, Names, State}.
+states(State) -> 
+	StateList = lists:map(fun(?STATE_ITEM(Name, Version, _)) -> {Name, Version} end, State),
+	{ok, StateList, State}.
 
 read(Name, State) ->
 	case lists:keyfind(Name, 1, State) of
