@@ -38,21 +38,21 @@ add_node(Node) when is_atom(Node) ->
 
 remove_node(Node) when is_atom(Node) ->
 	gen_server:call(?MODULE, {remove_node, Node}).
-	
+
 online_nodes() ->
 	gen_server:call(?MODULE, {online_nodes}).
-	
+
 known_nodes() ->
 	gen_server:call(?MODULE, {known_nodes}).	
-	
+
 subscribe() ->
 	brick_event:subscribe(?MODULE, self()),
 	ok.
-	
+
 unsubscribe() ->
 	brick_event:unsubscribe(?MODULE, self()),
 	ok.	
-	
+
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
@@ -68,10 +68,10 @@ init([]) ->
 %% handle_call/3
 handle_call({online_nodes}, _From, State=#state{online_nodes=OnlineNodes}) ->
 	{reply, {ok, OnlineNodes}, State};
-	
+
 handle_call({known_nodes}, _From, State=#state{known_nodes=KnownNodes}) ->
 	{reply, {ok, KnownNodes}, State};
-	
+
 handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
 	case {net_adm:ping(Node), lists:member(Node, KnownNodes)} of
 		{pong, false} -> 
@@ -84,7 +84,7 @@ handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, onlin
 		{_, true} -> {reply, {error, already_member}, State};
 		{pang, _} -> {reply, {error, node_not_online}, State}
 	end;
-	
+
 handle_call({remove_node, Node}, _From, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
 	case lists:member(Node, KnownNodes) of
 		true ->
@@ -95,7 +95,7 @@ handle_call({remove_node, Node}, _From, State=#state{known_nodes=KnownNodes, onl
 			{reply, ok, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
 		_ -> {reply, {error, not_member}, State}
 	end;
-	
+
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
@@ -112,7 +112,7 @@ handle_info({nodedown, Node}, State=#state{online_nodes=OnlineNodes}) ->
 			OnlineNodes1 = lists:delete(Node, OnlineNodes),
 			{noreply, State#state{online_nodes=OnlineNodes1}}
 	end;
-	
+
 handle_info({nodeup, Node}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
 	case {lists:member(Node, KnownNodes), lists:member(Node, OnlineNodes)} of
 		{false, _} -> {noreply, State};
@@ -122,24 +122,24 @@ handle_info({nodeup, Node}, State=#state{known_nodes=KnownNodes, online_nodes=On
 			OnlineNodes1 = [Node|OnlineNodes],
 			{noreply, State#state{online_nodes=OnlineNodes1}}
 	end;	
-	
+
 handle_info(Event, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) when ?is_brick_event(?BRICK_CLUSTER_CHANGED_EVENT, Event) ->
 	KnownNodes1 = Event#brick_event.value,
 	notify_new_nodes(KnownNodes1, KnownNodes),
 	{ok, OnlineNodes1} = online_nodes(KnownNodes1, OnlineNodes),
 	{noreply, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
-	
+
 handle_info({update}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
 	{ok, OnlineNodes1} = online_nodes(KnownNodes, OnlineNodes),
 	{noreply, State#state{online_nodes=OnlineNodes1}};
-	
+
 handle_info(timeout, State) ->
 	net_kernel:monitor_nodes(true),
 	brick_state:subscribe_topology_events(),
 	{ok, KnownNodes} = brick_state:read_topology_state(),
 	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
 	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
-	
+
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -164,7 +164,7 @@ notify_new_nodes([Node|T], OldList) ->
 		_ -> ok
 	end,
 	notify_new_nodes(T, OldList).
-		
+
 online_nodes([], OnlineNodes) -> {ok, OnlineNodes};
 online_nodes([Node|T], OnlineNodes) ->
 	case {net_adm:ping(Node), lists:member(Node, OnlineNodes)} of

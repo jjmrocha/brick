@@ -49,27 +49,27 @@ read_state(StateName) ->
 
 save_state(StateName, StateValue) ->
 	gen_server:cast(?MODULE, {save, StateName, StateValue}).
-	
+
 save_state(StateName, StateValue, Version) ->
 	gen_server:cast(?MODULE, {save, StateName, StateValue, Version}).
 
 subscribe_topology_events() ->
 	subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
-	
+
 unsubscribe_topology_events() ->
 	unsubscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
-	
+
 subscribe_state_events(StateName) ->
 	brick_event:subscribe(?STATE_TYPE(StateName), self()),
 	ok.
-	
+
 unsubscribe_state_events(StateName) ->
 	brick_event:unsubscribe(?STATE_TYPE(StateName), self()),
 	ok.	
-	
+
 state_names() ->
 	gen_server:call(?MODULE, {state_names}).
-	
+
 state_version(StateName) ->
 	gen_server:call(?MODULE, {state_version, StateName}).
 
@@ -85,97 +85,97 @@ init([]) ->
 	try Mod:init(Config) of
 		{ok, Data} ->
 			error_logger:info_msg("~p starting on [~p]...\n", [?MODULE, self()]),
-			{ok, #state{mode=Mod, data=Data. names=dict:new()}, 0};
+			{ok, #state{mod=Mod, data=Data, names=dict:new()}, 0};
 		{stop, Reason} -> {stop, Reason}
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, Config, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:init(~p) -> ~p:~p\n", LogArgs),
-		{stop, Reason}	
+			LogArgs = [?MODULE, Mod, Config, Error, Reason],
+			error_logger:error_msg("~p: Error while executing ~p:init(~p) -> ~p:~p\n", LogArgs),
+			{stop, Reason}	
 	end.
 
 %% handle_call/3
-handle_call({read, StateName}, _From, State=#state{mode=Mod, data=Data}) ->
+handle_call({read, StateName}, _From, State=#state{mod=Mod, data=Data}) ->
 	case read(StateName, Mod, Data) of
-		{ok, StateValue, Version, NewData} -> {reply, {ok, StateValue}, State#state{data=NewData}};
+		{ok, StateValue, _Version, NewData} -> {reply, {ok, StateValue}, State#state{data=NewData}};
 		{not_found, NewData} -> {reply, {ok, not_found}, State#state{data=NewData}};
 		{stop, Reason, NewData} -> {stop, mod_return, {error, Reason}, State#state{data=NewData}}
 	end;
-	
+
 handle_call({state_names}, _From, State=#state{names=Names}) ->
 	RetList = dict:fetch_keys(Names),
 	{reply, {ok, RetList}, State};
-	
+
 handle_call({state_version, StateName}, _From, State=#state{names=Names}) ->
 	case dict:find(StateName, Names) of
 		{ok, Version} -> {reply, {ok, Version}, State};
-		false -> {reply, {ok, not_found}, State};
+		false -> {reply, {ok, not_found}, State}
 	end;
-	
+
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
 %% handle_cast/2
-handle_cast({save, StateName, StateValue}, State=#state{mode=Mod, data=Data, names=Names}) ->
+handle_cast({save, StateName, StateValue}, State=#state{mod=Mod, data=Data, names=Names}) ->
 	Version = brick_hlc:timestamp(),
 	case write(StateName, StateValue, Version, Mod, Data) of
 		{ok, NewData} ->
 			brick_gossip:publish(StateName, StateValue, Version),
 			NewNames = dict:store(StateName, Version, Names),
 			{noreply, State#state{data=NewData, names=NewNames}};
-		{stop, Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
+		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 	end;
-	
-handle_cast({save, StateName, StateValue, Version}, State=#state{mode=Mod, data=Data, names=Names}) ->
+
+handle_cast({save, StateName, StateValue, Version}, State=#state{mod=Mod, data=Data, names=Names}) ->
 	case must_update(dict:find(StateName, Names), Version) of
 		true ->
 			case write(StateName, StateValue, Version, Mod, Data) of
 				{ok, NewData} ->
 					NewNames = dict:store(StateName, Version, Names),
 					{noreply, State#state{data=NewData, names=NewNames}};
-				{stop, Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
+				{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 			end;
 		false -> {noreply, State}
 	end;
-	
+
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 %% handle_info/2
-handle_info(timeout, State=#state{mode=Mod, data=Data, names=Names}) ->
+handle_info(timeout, State=#state{mod=Mod, data=Data, names=Names}) ->
 	try Mod:states(Data) of
 		{ok, List, NewData} ->
 			NewNames = lists:foldl(fun({StateName, EncodedVersion}, Dict) ->
-					Version = brick_hlc:decode(EncodedVersion),
-					dict:store(StateName, Version, Dict)				
-				end, Names, List).
+							Version = brick_hlc:decode(EncodedVersion),
+							dict:store(StateName, Version, Dict)				
+					end, Names, List),
 			{noreply, State#state{data=NewData, names=NewNames}};
-		{stop, Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
+		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:states(State) -> ~p:~p\n", LogArgs),
-		{stop, mod_return, State}	
+			LogArgs = [?MODULE, Mod, Error, Reason],
+			error_logger:error_msg("~p: Error while executing ~p:states(State) -> ~p:~p\n", LogArgs),
+			{stop, mod_return, State}	
 	end;
-	
+
 handle_info(_Info, State) ->
 	{noreply, State}.
 
 %% terminate/2
-terminate(_Reason, #state{mode=Mod, data=Data}) ->
+terminate(_Reason, #state{mod=Mod, data=Data}) ->
 	try Mod:terminate(Data) 
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:terminate(State) -> ~p:~p\n", LogArgs)
+			LogArgs = [?MODULE, Mod, Error, Reason],
+			error_logger:error_msg("~p: Error while executing ~p:terminate(State) -> ~p:~p\n", LogArgs)
 	end.
 
 %% code_change/3
-code_change(OldVsn, State=#state{mode=Mod, data=Data}, Extra) ->
+code_change(OldVsn, State=#state{mod=Mod, data=Data}, Extra) ->
 	try Mod:change(OldVsn, Data, Extra) of
 		{ok, NewData} -> {ok, State#state{data=NewData}};
 		{error, Reason} -> {error, Reason}
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, OldVsn, Extra, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:change(~p, State, ~p) -> ~p:~p\n", LogArgs),
-		{error, Reason}
+			LogArgs = [?MODULE, Mod, OldVsn, Extra, Error, Reason],
+			error_logger:error_msg("~p: Error while executing ~p:change(~p, State, ~p) -> ~p:~p\n", LogArgs),
+			{error, Reason}
 	end.
 
 %% ====================================================================
@@ -185,11 +185,11 @@ code_change(OldVsn, State=#state{mode=Mod, data=Data}, Extra) ->
 read(StateName, Mod, Data) ->
 	try Mod:read(StateName, Data)
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, StateName, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:read(~p, State) -> ~p:~p\n", LogArgs),
-		{stop, system_error, Data}	
+			LogArgs = [?MODULE, Mod, StateName, Error, Reason],
+			error_logger:error_msg("~p: Error while executing ~p:read(~p, State) -> ~p:~p\n", LogArgs),
+			{stop, system_error, Data}	
 	end.
-	
+
 write(StateName, StateValue, Version, Mod, Data) ->
 	EncodedVersion = brick_hlc:encode(Version),
 	try Mod:write(StateName, StateValue, EncodedVersion, Data) of
@@ -198,15 +198,15 @@ write(StateName, StateValue, Version, Mod, Data) ->
 			{ok, NewData};
 		{stop, Reason, NewData} -> {stop, Reason, NewData}
 	catch Error:Reason -> 
-		LogArgs = [?MODULE, Mod, StateName, StateValue, EncodedVersion,, Error, Reason],
-		error_logger:error_msg("~p: Error while executing ~p:write(~p, ~p, ~p, State) -> ~p:~p\n", LogArgs),
-		{stop, system_error, Data}	
-	end;
-	
+			LogArgs = [?MODULE, Mod, StateName, StateValue, EncodedVersion, Error, Reason],
+			error_logger:error_msg("~p: Error while executing ~p:write(~p, ~p, ~p, State) -> ~p:~p\n", LogArgs),
+			{stop, system_error, Data}	
+	end.
+
 send_event(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE, StateValue) ->
 	brick_event:event(?STATE_TYPE(StateName), ?BRICK_CLUSTER_CHANGED_EVENT, StateValue);
 send_event(StateName, StateValue) ->
 	brick_event:event(?STATE_TYPE(StateName), ?BRICK_STATE_CHANGED_EVENT, StateValue).
-	
+
 must_update(false, _) -> true;
 must_update({ok, OldVersion}, Version) -> brick_hlc:before(OldVersion, Version).

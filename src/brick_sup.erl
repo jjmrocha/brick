@@ -41,7 +41,7 @@ init([]) ->
 	Gossip = #{id => brick_gossip, start => {brick_gossip, start_link, []}, restart => permanent, type => worker},
 	
 	Optional = optional(),
-
+	
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
 	Procs = [State, Clock, Cluster, Event, Gossip] ++ Optional,
 	{ok, {SupFlags, Procs}}.
@@ -53,9 +53,9 @@ init([]) ->
 optional() ->
 	Optional1 = if_add(node_discovery_enable, true, fun() -> 
 					#{id => brick_cast,
-                			start => {brick_cast, start_link, []},
-                			restart => permanent,
-                			type => worker}
+						start => {brick_cast, start_link, []},
+						restart => permanent,
+						type => worker}
 			end, []),
 	Optional1.
 

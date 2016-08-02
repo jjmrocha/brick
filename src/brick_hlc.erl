@@ -78,7 +78,7 @@ handle_call({timestamp}, _From, State = #state{last = LastTS}) ->
 	end,
 	Timestamp = ?hlc_timestamp(Logical, Counter),
 	{reply, Timestamp, State#state{last = Timestamp}};
-	
+
 handle_call({update, ExternalTS}, _From, State = #state{last = LastTS}) ->
 	Now = wall_clock(),
 	Logical = max(Now, LastTS#timestamp.l, ExternalTS#timestamp.l),
@@ -91,7 +91,7 @@ handle_call({update, ExternalTS}, _From, State = #state{last = LastTS}) ->
 	end,
 	Timestamp = ?hlc_timestamp(Logical, Counter),
 	{reply, Timestamp, State#state{last = Timestamp}};
-	
+
 handle_call(_Msg, _From, State) ->
 	{noreply, State}.
 

@@ -56,7 +56,7 @@ init([Type, Subscriber]) ->
 handle_event({Type, Event}, State=#state{type=Type, subscriber=Subscriber}) ->
 	Subscriber ! Event,
 	{ok, State};
-	
+
 handle_event(_Event, State) ->
 	{ok, State}.
 
@@ -67,7 +67,7 @@ handle_call(_Request, State) ->
 %% handle_info/2
 handle_info({'DOWN', MonitorRef, _Type, _Object, _Info}, #state{ref=MonitorRef}) ->
 	remove_handler;
-	
+
 handle_info(_Info, State) ->
 	{ok, State}.
 

@@ -20,7 +20,7 @@
 
 -define(STATE_ITEM(Name, Version, Value), {Name, Version, Value}).
 
--export([init/1, names/1, read/2, write/4, code_change/3, terminate/1]).
+-export([init/1, states/1, read/2, write/4, code_change/3, terminate/1]).
 %% ====================================================================
 %% API functions
 %% ====================================================================
