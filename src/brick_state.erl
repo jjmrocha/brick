@@ -45,8 +45,8 @@ save_topology_state(Nodes) ->
 read_state(StateName) ->
 	gen_server:call(?MODULE, {read, StateName}).	
 
-save_state(StateName, State) ->
-	gen_server:cast(?MODULE, {save, StateName, State}).
+save_state(StateName, StateValue) ->
+	gen_server:cast(?MODULE, {save, StateName, StateValue}).
 
 subscribe_topology_events() ->
 	subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
@@ -65,23 +65,22 @@ unsubscribe_state_events(StateName) ->
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {}).
+-record(state, {mod, data}).
 
 %% init/1
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:init-1">gen_server:init/1</a>
--spec init(Args :: term()) -> Result when
-	Result :: {ok, State}
-			| {ok, State, Timeout}
-			| {ok, State, hibernate}
-			| {stop, Reason :: term()}
-			| ignore,
-	State :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
 init([]) ->
-    {ok, #state{}}.
-
+	Mod = brick_config:get(storage_handler),
+	Config = brick_config:get(storage_handler_config),
+	try Mod:init(Config) of
+		{ok, Data} ->
+			error_logger:info_msg("~p starting on [~p]...\n", [?MODULE, self()]),
+			{ok, #state{mode=Mod, data=Data}};
+		{stop, Reason} -> {stop, Reason}
+	catch Error:Reason -> 
+		LogArgs = [?MODULE, Mod, Config, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:init(~p) -> ~p:~p\n", LogArgs),
+		{stop, Reason}	
+	end.
 
 %% handle_call/3
 %% ====================================================================
@@ -100,24 +99,19 @@ init([]) ->
 	Timeout :: non_neg_integer() | infinity,
 	Reason :: term().
 %% ====================================================================
-handle_call(_Request, _From, State) ->
+handle_call({read, StateName}, _From, State=#state{mode=Mod, data=Data}) ->
     Reply = ok,
-    {reply, Reply, State}.
-
+    {reply, Reply, State};
+    
+handle_call(_Request, _From, State) ->
+	{noreply, State}.
 
 %% handle_cast/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_cast-2">gen_server:handle_cast/2</a>
--spec handle_cast(Request :: term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
+handle_cast({save, StateName, StateValue}, State) ->
+	{noreply, State}.
+	
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+	{noreply, State}.
 
 
 %% handle_info/2
@@ -132,33 +126,29 @@ handle_cast(_Msg, State) ->
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
 handle_info(_Info, State) ->
-    {noreply, State}.
+	{noreply, State};
 
+handle_info(_Info, State) ->
+	{noreply, State}.
 
 %% terminate/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:terminate-2">gen_server:terminate/2</a>
--spec terminate(Reason, State :: term()) -> Any :: term() when
-	Reason :: normal
-			| shutdown
-			| {shutdown, term()}
-			| term().
-%% ====================================================================
-terminate(_Reason, _State) ->
-    ok.
-
+terminate(_Reason, #state{mode=Mod, data=Data}) ->
+	try Mod:terminate(Data) 
+	catch Error:Reason -> 
+		LogArgs = [?MODULE, Mod, Data, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:terminate(~p) -> ~p:~p\n", LogArgs)
+	end.
 
 %% code_change/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:code_change-3">gen_server:code_change/3</a>
--spec code_change(OldVsn, State :: term(), Extra :: term()) -> Result when
-	Result :: {ok, NewState :: term()} | {error, Reason :: term()},
-	OldVsn :: Vsn | {down, Vsn},
-	Vsn :: term().
-%% ====================================================================
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
+code_change(OldVsn, State=#state{mode=Mod, data=Data}, Extra) ->
+	try Mod:change(OldVsn, Data, Extra) of
+		{ok, NewData} -> {ok, State#state{data=NewData}};
+		{error, Reason} -> {error, Reason}
+	catch Error:Reason -> 
+		LogArgs = [?MODULE, Mod, OldVsn, Data, Extra, Error, Reason],
+		error_logger:error_msg("~p: Error while executing ~p:change(~p, ~p, ~p) -> ~p:~p\n", LogArgs),
+		{error, Reason}
+	end.
 
 %% ====================================================================
 %% Internal functions
