@@ -62,8 +62,7 @@ handle_event(_Event, State) ->
 
 %% handle_call/2
 handle_call(_Request, State) ->
-	Reply = ok,
-	{ok, Reply, State}.
+	{ok, ok, State}.
 
 %% handle_info/2
 handle_info({'DOWN', MonitorRef, _Type, _Object, _Info}, #state{ref=MonitorRef}) ->
