@@ -88,7 +88,7 @@ handle_call({read, StateName}, _From, State=#state{mode=Mod, data=Data}) ->
 	try Mod:read(StateName, Data) of
 		{ok, StateValue, Version, NewData} -> {reply, {ok, StateValue}, State#state{data=NewData}};
 		{not_found, NewData} -> {reply, {ok, not_found}, State#state{data=NewData}};
-		{stop, Reason, NewData} -> {stop, Reason, State#state{data=NewData}}
+		{stop, Reason, NewData} -> {stop, Reason, {error, Reason}, State#state{data=NewData}}
 	catch Error:Reason -> 
 		LogArgs = [?MODULE, Mod, StateName, Error, Reason],
 		error_logger:error_msg("~p: Error while executing ~p:read(~p, State) -> ~p:~p\n", LogArgs),
@@ -111,7 +111,7 @@ handle_cast({save, StateName, StateValue}, State=#state{mode=Mod, data=Data}) ->
 	catch Error:Reason -> 
 		LogArgs = [?MODULE, Mod, StateName, StateValue, EncodedVersion,, Error, Reason],
 		error_logger:error_msg("~p: Error while executing ~p:write(~p, ~p, ~p, State) -> ~p:~p\n", LogArgs),
-		{stop, Reason, {error, Reason}, State}	
+		{stop, Reason, State}	
 	end;
 	
 handle_cast(_Msg, State) ->
