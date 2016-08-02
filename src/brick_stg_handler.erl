@@ -23,8 +23,8 @@
 -callback init(Args :: list()) -> 
 	{ok, State :: term()} | {stop, Reason :: term()}. 
 
--callback names(State :: term()) -> 
-	{ok, Names :: list(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
+-callback states(State :: term()) -> 
+	{ok, StateList :: list(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 	
 -callback read(Name :: atom(), State :: term()) -> 
 	{ok, Value :: term(), Version :: integer(), NewState :: term()} | {not_found, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}. 
