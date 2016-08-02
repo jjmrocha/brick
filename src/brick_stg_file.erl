@@ -33,11 +33,11 @@ init(Args) ->
 		{_, FileName} -> {ok, FileName}
 	end. 
 
-names(FileName) -> 
+states(FileName) -> 
 	case read_file(FileName) of
 		{ok, Data} -> 
-			Names = lists:map(fun(?STATE_ITEM(Name, _, _)) -> Name end, Data),
-			{ok, Names, FileName};		
+			StateList = lists:map(fun(?STATE_ITEM(Name, Version, _)) -> {Name, Version} end, Data),
+			{ok, StateList, FileName};		
 		{error, Reason} -> {stop, Reason, FileName}
 	end.
 
