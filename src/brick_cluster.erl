@@ -136,7 +136,7 @@ handle_info({update}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNo
 handle_info(timeout, State) ->
 	net_kernel:monitor_nodes(true),
 	brick_state:subscribe_topology_events(),
-	{ok, KnownNodes} = brick_state:read_topology_state(),
+	{ok, KnownNodes, _Version} = brick_state:read_topology_state(),
 	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
 	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
 
