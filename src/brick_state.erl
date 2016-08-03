@@ -96,7 +96,9 @@ init([]) ->
 %% handle_call/3
 handle_call({read, StateName}, _From, State=#state{mod=Mod, data=Data}) ->
 	case read(StateName, Mod, Data) of
-		{ok, StateValue, _Version, NewData} -> {reply, {ok, StateValue}, State#state{data=NewData}};
+		{ok, StateValue, EncodedVersion, NewData} -> 
+			Version = brick_hlc:decode(EncodedVersion),
+			{reply, {ok, StateValue, Version}, State#state{data=NewData}};
 		{not_found, NewData} -> {reply, {ok, not_found}, State#state{data=NewData}};
 		{stop, Reason, NewData} -> {stop, mod_return, {error, Reason}, State#state{data=NewData}}
 	end;
