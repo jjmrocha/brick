@@ -44,6 +44,6 @@
 			{broadcast_port, 38077},
 			{broadcast_interface, "*"}
 		]},
-		{gossip_interval, 60000}
+		{gossip_interval, 15000}
 	]}
 ]}.
