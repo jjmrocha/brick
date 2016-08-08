@@ -18,6 +18,9 @@
 
 -behaviour(gen_server).
 
+-define(GOSSIP_ENVELOPE(StateName, StateValue, StateVersion, From), {gossip, StateName, StateValue, StateVersion, From}).
+-define(GOSSIP_MSG(StateName, StateValue, StateVersion), ?GOSSIP_ENVELOPE(StateName, StateValue, StateVersion, node())).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% ====================================================================
@@ -35,101 +38,88 @@ publish(StateName, StateValue, Version) ->
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {}).
+-record(state, {timer}).
 
 %% init/1
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:init-1">gen_server:init/1</a>
--spec init(Args :: term()) -> Result when
-	Result :: {ok, State}
-			| {ok, State, Timeout}
-			| {ok, State, hibernate}
-			| {stop, Reason :: term()}
-			| ignore,
-	State :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
 init([]) ->
-    {ok, #state{}}.
-
+	error_logger:info_msg("~p starting on [~p]...\n", [?MODULE, self()]),
+	Interval = brick_config:get_env(gossip_interval),
+	{ok, TimerRef} = timer:send_interval(Interval, {gossip}),
+	{ok, #state{timer=TimerRef}, 0}.
 
 %% handle_call/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_call-3">gen_server:handle_call/3</a>
--spec handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) -> Result when
-	Result :: {reply, Reply, NewState}
-			| {reply, Reply, NewState, Timeout}
-			| {reply, Reply, NewState, hibernate}
-			| {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason, Reply, NewState}
-			| {stop, Reason, NewState},
-	Reply :: term(),
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity,
-	Reason :: term().
-%% ====================================================================
 handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
-
+	{noreply, State}.
 
 %% handle_cast/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_cast-2">gen_server:handle_cast/2</a>
--spec handle_cast(Request :: term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast(?GOSSIP_ENVELOPE(StateName, StateValue, StateVersion, From), State) ->
+	brick_hlc:update(StateVersion),
+	Update = case brick_state:state_version(StateName) of
+		{ok, CurrentVersion} -> brick_hlc:compare(CurrentVersion, StateVersion);
+		not_found -> -1;
+		_ -> error
+	end,
+	case Update of
+		-1 ->
+			brick_state:save_state(StateName, StateValue, StateVersion),
+			gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion), exclude, From);
+		1 ->
+			{ok, CurrentValue, CurrentVersion} = brick_state:read_state(StateName),
+			gossip(?GOSSIP_MSG(StateName, CurrentValue, CurrentVersion), include, From);
+		_ -> ok
+	end,
+	{noreply, State};
 
+handle_cast({publish, StateName, StateValue, Version}, State) ->
+	gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion)),
+	{noreply, State};
+	
+handle_cast(_Msg, State) ->
+	{noreply, State}.
 
 %% handle_info/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:handle_info-2">gen_server:handle_info/2</a>
--spec handle_info(Info :: timeout | term(), State :: term()) -> Result when
-	Result :: {noreply, NewState}
-			| {noreply, NewState, Timeout}
-			| {noreply, NewState, hibernate}
-			| {stop, Reason :: term(), NewState},
-	NewState :: term(),
-	Timeout :: non_neg_integer() | infinity.
-%% ====================================================================
+handle_info({gossip}, State) ->
+	{ok, StateNames} = brick_state:state_names(),
+	case brick_util:random_get(StateNames, 1) of
+		[StateName] ->
+			{ok, StateValue, StateVersion} = brick_state:read_state(StateName),
+			gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion));
+		_ -> ok
+	end,
+	{noreply, State};
+	
+handle_info(timeout, State) ->
+	handle_info({gossip}, State);
+	
 handle_info(_Info, State) ->
-    {noreply, State}.
-
+	{noreply, State}.
 
 %% terminate/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:terminate-2">gen_server:terminate/2</a>
--spec terminate(Reason, State :: term()) -> Any :: term() when
-	Reason :: normal
-			| shutdown
-			| {shutdown, term()}
-			| term().
-%% ====================================================================
-terminate(_Reason, _State) ->
-    ok.
-
+terminate(_Reason, #state{timer=TimerRef}) ->
+	timer:cancel(TimerRef),
+	ok.
 
 %% code_change/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:code_change-3">gen_server:code_change/3</a>
--spec code_change(OldVsn, State :: term(), Extra :: term()) -> Result when
-	Result :: {ok, NewState :: term()} | {error, Reason :: term()},
-	OldVsn :: Vsn | {down, Vsn},
-	Vsn :: term().
-%% ====================================================================
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
+	{ok, State}.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+gossip(Msg) -> gossip(Msg, [], [node()]).
+
+gossip(Msg, include, From) -> gossip(Msg, [From], [node()]);
+gossip(Msg, exclude, From) -> gossip(Msg, [], [node(), From]);
+gossip(Msg, IncludeList, ExcludeList) ->
+	{ok, OnlineNodes} = brick_cluster:online_nodes(),
+	Nodes = select_nodes(OnlineNodes, ExcludeList ++ IncludeList) ++ IncludeList,
+	send_msg(Nodes, Msg).
+
+select_nodes([], _ExcludeList) -> [].
+select_nodes(OnlineNodes, ExcludeList) ->
+	Nodes = brick_util:remove(ExcludeList, OnlineNodes),
+	brick_util:random_get(Nodes, 3).
+
+send_msg([], _Msg) -> ok;
+send_msg(Nodes, Msg) -> gen_server:abcast(Nodes, ?MODULE, Msg).
