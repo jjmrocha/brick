@@ -43,6 +43,7 @@
 		{node_discovery, [
 			{broadcast_port, 38077},
 			{broadcast_interface, "*"}
-		]}
+		]},
+		{gossip_interval, 60000}
 	]}
 ]}.
