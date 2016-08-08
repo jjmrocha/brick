@@ -36,7 +36,7 @@
 -export([state_names/0, state_version/1]).
 
 start_link() ->
-	gen_event:start_link({local, ?MODULE}).
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 read_topology_state() ->
 	read_state(?BRICK_CLUSTER_TOPOLOGY_STATE).
@@ -80,12 +80,11 @@ state_version(StateName) ->
 
 %% init/1
 init([]) ->
-	Mod = brick_config:get(storage_handler),
-	Config = brick_config:get(storage_handler_config),
+	Mod = brick_config:get_env(storage_handler),
+	Config = brick_config:get_env(storage_handler_config),
+	error_logger:info_msg("~p [~p] starting on [~p]...\n", [?MODULE, Mod, self()]),
 	try Mod:init(Config) of
-		{ok, Data} ->
-			error_logger:info_msg("~p starting on [~p]...\n", [?MODULE, self()]),
-			{ok, #state{mod=Mod, data=Data, names=dict:new()}, 0};
+		{ok, Data} -> {ok, #state{mod=Mod, data=Data, names=dict:new()}, 0};
 		{stop, Reason} -> {stop, Reason}
 	catch Error:Reason -> 
 			LogArgs = [?MODULE, Mod, Config, Error, Reason],

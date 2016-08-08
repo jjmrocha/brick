@@ -30,7 +30,7 @@
 -export([publish/3]).
 
 start_link() ->
-	gen_event:start_link({local, ?MODULE}).
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 	
 publish(StateName, StateValue, StateVersion) ->
 	gen_server:cast(?MODULE, {publish, StateName, StateValue, StateVersion}).
