@@ -32,7 +32,7 @@
 -export([encode/1, decode/1]).
 -export([add_seconds/2]).
 -export([update/1]).
--export([before/2]).
+-export([compare/2, before/2]).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -53,10 +53,15 @@ add_seconds(?hlc_timestamp(Logical, Counter), Seconds) ->
 
 update(ExternalTime) -> gen_server:call(?MODULE, {update, ExternalTime}).
 
-before(?hlc_timestamp(L1, _), ?hlc_timestamp(L2, _)) when L1 < L2 -> true;
-before(?hlc_timestamp(L, C1), ?hlc_timestamp(L, C2)) when C1 < C2 -> true;
-before(?hlc_timestamp(_, _), ?hlc_timestamp(_, _)) -> false;
-before(T1, T2) -> T1 < T2.
+compare(?hlc_timestamp(L1, _), ?hlc_timestamp(L2, _)) when L1 < L2 -> -1;
+compare(?hlc_timestamp(L, C1), ?hlc_timestamp(L, C2)) when C1 < C2 -> -1;
+compare(?hlc_timestamp(L, C), ?hlc_timestamp(L, C)) -> 0;
+compare(?hlc_timestamp(_, _), ?hlc_timestamp(_, _)) -> 1;
+compare(T1, T2) when T1 < T2 -> -1;
+compare(T, T) -> 0;
+compare(_, _) -> 1.
+
+before(T1, T2) -> compare(T1, T2) =:= 1.
 
 %% ====================================================================
 %% Behavioural functions
