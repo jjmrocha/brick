@@ -29,7 +29,9 @@ remove([H|T], List) -> remove(T, lists:delete(H, List)).
 random_get([], _Count) -> [];
 random_get(List, Count) -> random_get(shuffle(List), Count, []).
 	
-shuffle(List) -> [X || {_, X} <- lists:sort([{random:uniform(), N} || N <- List])].
+shuffle([]) -> [];
+shuffle([Element]) -> [Element];
+shuffle(List) -> [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- List])].
 
 %% ====================================================================
 %% Internal functions

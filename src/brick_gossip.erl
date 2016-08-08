@@ -32,8 +32,8 @@
 start_link() ->
 	gen_event:start_link({local, ?MODULE}).
 	
-publish(StateName, StateValue, Version) ->
-	gen_server:cast(?MODULE, {publish, StateName, StateValue, Version}).
+publish(StateName, StateValue, StateVersion) ->
+	gen_server:cast(?MODULE, {publish, StateName, StateValue, StateVersion}).
 
 %% ====================================================================
 %% Behavioural functions
@@ -64,13 +64,13 @@ handle_cast(?GOSSIP_ENVELOPE(StateName, StateValue, StateVersion, From), State) 
 			brick_state:save_state(StateName, StateValue, StateVersion),
 			gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion), exclude, From);
 		1 ->
-			{ok, CurrentValue, CurrentVersion} = brick_state:read_state(StateName),
-			gossip(?GOSSIP_MSG(StateName, CurrentValue, CurrentVersion), include, From);
+			{ok, Value, Version} = brick_state:read_state(StateName),
+			gossip(?GOSSIP_MSG(StateName, Value, Version), include, From);
 		_ -> ok
 	end,
 	{noreply, State};
 
-handle_cast({publish, StateName, StateValue, Version}, State) ->
+handle_cast({publish, StateName, StateValue, StateVersion}, State) ->
 	gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion)),
 	{noreply, State};
 	
@@ -116,7 +116,7 @@ gossip(Msg, IncludeList, ExcludeList) ->
 	Nodes = select_nodes(OnlineNodes, ExcludeList ++ IncludeList) ++ IncludeList,
 	send_msg(Nodes, Msg).
 
-select_nodes([], _ExcludeList) -> [].
+select_nodes([], _ExcludeList) -> [];
 select_nodes(OnlineNodes, ExcludeList) ->
 	Nodes = brick_util:remove(ExcludeList, OnlineNodes),
 	brick_util:random_get(Nodes, 3).
