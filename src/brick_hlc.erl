@@ -61,7 +61,7 @@ compare(T1, T2) when T1 < T2 -> -1;
 compare(T, T) -> 0;
 compare(_, _) -> 1.
 
-before(T1, T2) -> compare(T1, T2) =:= 1.
+before(T1, T2) -> compare(T1, T2) =:= -1.
 
 %% ====================================================================
 %% Behavioural functions
