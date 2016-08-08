@@ -99,7 +99,7 @@ handle_call({read, StateName}, _From, State=#state{mod=Mod, data=Data}) ->
 		{ok, StateValue, EncodedVersion, NewData} -> 
 			Version = brick_hlc:decode(EncodedVersion),
 			{reply, {ok, StateValue, Version}, State#state{data=NewData}};
-		{not_found, NewData} -> {reply, {ok, not_found}, State#state{data=NewData}};
+		{not_found, NewData} -> {reply, not_found, State#state{data=NewData}};
 		{stop, Reason, NewData} -> {stop, mod_return, {error, Reason}, State#state{data=NewData}}
 	end;
 
@@ -110,7 +110,7 @@ handle_call({state_names}, _From, State=#state{names=Names}) ->
 handle_call({state_version, StateName}, _From, State=#state{names=Names}) ->
 	case dict:find(StateName, Names) of
 		{ok, Version} -> {reply, {ok, Version}, State};
-		false -> {reply, {ok, not_found}, State}
+		false -> {reply, not_found, State}
 	end;
 
 handle_call(_Request, _From, State) ->
