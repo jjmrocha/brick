@@ -29,6 +29,7 @@
 -export([add_node/1, remove_node/1]).
 -export([online_nodes/0, known_nodes/0]).
 -export([subscribe/0, unsubscribe/0]).
+-export([cluster_name/0]).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -52,6 +53,8 @@ subscribe() ->
 unsubscribe() ->
 	brick_event:unsubscribe(?MODULE, self()),
 	ok.	
+	
+cluster_name() -> brick_system:cluster_name().
 
 %% ====================================================================
 %% Behavioural functions
@@ -75,12 +78,18 @@ handle_call({known_nodes}, _From, State=#state{known_nodes=KnownNodes}) ->
 handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
 	case {check_online(Node), lists:member(Node, KnownNodes)} of
 		{pong, false} -> 
-			KnownNodes1 = [Node|KnownNodes], 
-			OnlineNodes1 = [Node|OnlineNodes],
-			brick_state:save_topology_state(KnownNodes1),
-			brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
-			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
-			{reply, ok, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
+			ClusterName = cluster_name(),
+			case rpc:call(Node, ?MODULE, cluster_name, []) of
+				{badrpc, _Reason} -> pang;
+				ClusterName -> 
+					KnownNodes1 = [Node|KnownNodes], 
+					OnlineNodes1 = [Node|OnlineNodes],
+					brick_state:save_topology_state(KnownNodes1),
+					brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
+					brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
+					{reply, ok, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
+				_ -> {reply, {error, not_the_same_cluster}, State};
+			end;
 		{_, true} -> {reply, {error, already_member}, State};
 		{pang, _} -> {reply, {error, node_not_online}, State}
 	end;
