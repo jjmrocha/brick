@@ -73,7 +73,7 @@ handle_call({known_nodes}, _From, State=#state{known_nodes=KnownNodes}) ->
 	{reply, {ok, KnownNodes}, State};
 
 handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
-	case {net_adm:ping(Node), lists:member(Node, KnownNodes)} of
+	case {check_online(Node), lists:member(Node, KnownNodes)} of
 		{pong, false} -> 
 			KnownNodes1 = [Node|KnownNodes], 
 			OnlineNodes1 = [Node|OnlineNodes],
@@ -138,7 +138,7 @@ handle_info(timeout, State) ->
 	brick_state:subscribe_topology_events(),
 	KnownNodes = case brick_state:read_topology_state() of
 		{ok, Topology, _Version} -> Topology;
-		_ -> []
+		_ -> [node()]
 	end,
 	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
 	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
@@ -160,6 +160,20 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
+check_online(Node) ->
+	case net_adm:ping(Node) of
+		pong ->
+			case rpc:call(Node, erlang, registered, []) of
+				{badrpc, _Reason} -> pang;
+				Registered -> 
+					case lists:member(?MODULE, Registered) of
+						true -> pong;
+						false -> pang
+					end
+			end;
+		_ -> pang
+	end.
+
 notify_new_nodes([], _) -> ok;
 notify_new_nodes([Node|T], OldList) -> 
 	case lists:member(Node, OldList) of
@@ -169,8 +183,9 @@ notify_new_nodes([Node|T], OldList) ->
 	notify_new_nodes(T, OldList).
 
 online_nodes([], OnlineNodes) -> {ok, OnlineNodes};
+online_nodes([Node|T], OnlineNodes) when Node =:= node() -> online_nodes(T, OnlineNodes);
 online_nodes([Node|T], OnlineNodes) ->
-	case {net_adm:ping(Node), lists:member(Node, OnlineNodes)} of
+	case {check_online(Node), lists:member(Node, OnlineNodes)} of
 		{pong, false} -> 
 			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 			online_nodes(T, [Node|OnlineNodes]);

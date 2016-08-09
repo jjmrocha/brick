@@ -109,7 +109,7 @@ handle_call({state_names}, _From, State=#state{names=Names}) ->
 handle_call({state_version, StateName}, _From, State=#state{names=Names}) ->
 	case dict:find(StateName, Names) of
 		{ok, Version} -> {reply, {ok, Version}, State};
-		false -> {reply, not_found, State}
+		error -> {reply, not_found, State}
 	end;
 
 handle_call(_Request, _From, State) ->
@@ -209,5 +209,5 @@ send_event(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE, StateValue) ->
 send_event(StateName, StateValue) ->
 	brick_event:event(?STATE_TYPE(StateName), ?BRICK_STATE_CHANGED_EVENT, StateValue).
 
-must_update(false, _) -> true;
+must_update(error, _) -> true;
 must_update({ok, OldVersion}, Version) -> brick_hlc:before(OldVersion, Version).
