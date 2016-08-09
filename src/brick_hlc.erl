@@ -17,8 +17,8 @@
 -module(brick_hlc).
 
 -define(FRACTIONS_OF_SECOND, 10000).
--record(timestamp, {l, c}).
--define(hlc_timestamp(Logical, Counter), #timestamp{l = Logical, c = Counter}).
+-record(hlc, {l, c}).
+-define(hlc_timestamp(Logical, Counter), #hlc{l = Logical, c = Counter}).
 
 -behaviour(gen_server).
 
@@ -76,9 +76,9 @@ init([]) ->
 %% handle_call/3
 handle_call({timestamp}, _From, State = #state{last = LastTS}) ->
 	Now = wall_clock(),
-	Logical = max(Now, LastTS#timestamp.l),
+	Logical = max(Now, LastTS#hlc.l),
 	Counter = if
-		Logical =:= LastTS#timestamp.l -> LastTS#timestamp.c + 1;
+		Logical =:= LastTS#hlc.l -> LastTS#hlc.c + 1;
 		true -> 0
 	end,
 	Timestamp = ?hlc_timestamp(Logical, Counter),
@@ -86,12 +86,12 @@ handle_call({timestamp}, _From, State = #state{last = LastTS}) ->
 
 handle_call({update, ExternalTS}, _From, State = #state{last = LastTS}) ->
 	Now = wall_clock(),
-	Logical = max(Now, LastTS#timestamp.l, ExternalTS#timestamp.l),
+	Logical = max(Now, LastTS#hlc.l, ExternalTS#hlc.l),
 	Counter = if
-		Logical =:= LastTS#timestamp.l, LastTS#timestamp.l =:= ExternalTS#timestamp.l ->
-			max(LastTS#timestamp.c, ExternalTS#timestamp.c) + 1;
-		Logical =:= LastTS#timestamp.l -> LastTS#timestamp.c + 1;
-		Logical =:= ExternalTS#timestamp.l -> ExternalTS#timestamp.c + 1;
+		Logical =:= LastTS#hlc.l, LastTS#hlc.l =:= ExternalTS#hlc.l ->
+			max(LastTS#hlc.c, ExternalTS#hlc.c) + 1;
+		Logical =:= LastTS#hlc.l -> LastTS#hlc.c + 1;
+		Logical =:= ExternalTS#hlc.l -> ExternalTS#hlc.c + 1;
 		true -> 0
 	end,
 	Timestamp = ?hlc_timestamp(Logical, Counter),
