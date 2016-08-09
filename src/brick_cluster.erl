@@ -88,7 +88,7 @@ handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, onlin
 					brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
 					brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 					{reply, ok, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
-				_ -> {reply, {error, not_the_same_cluster}, State};
+				_ -> {reply, {error, not_the_same_cluster}, State}
 			end;
 		{_, true} -> {reply, {error, already_member}, State};
 		{pang, _} -> {reply, {error, node_not_online}, State}
