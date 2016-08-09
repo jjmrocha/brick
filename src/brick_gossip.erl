@@ -71,7 +71,7 @@ handle_cast(?GOSSIP_ENVELOPE(StateName, StateValue, StateVersion, From), State) 
 	{noreply, State};
 
 handle_cast({publish, StateName, StateValue, StateVersion}, State) ->
-	gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion)),
+	broadcast(?GOSSIP_MSG(StateName, StateValue, StateVersion)),
 	{noreply, State};
 	
 handle_cast(_Msg, State) ->
@@ -89,7 +89,12 @@ handle_info({gossip}, State) ->
 	{noreply, State};
 	
 handle_info(timeout, State) ->
-	handle_info({gossip}, State);
+	{ok, StateNames} = brick_state:state_names(),
+	lists:foreach(fun(StateName) -> 
+			{ok, StateValue, StateVersion} = brick_state:read_state(StateName),
+			gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion))
+		end, StateNames),
+	{noreply, State};
 	
 handle_info(_Info, State) ->
 	{noreply, State}.
@@ -106,6 +111,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+broadcast(Msg) ->
+	{ok, OnlineNodes} = brick_cluster:online_nodes(),
+	Nodes = brick_util:remove([node()], OnlineNodes),
+	send_msg(Nodes, Msg).
 
 gossip(Msg) -> gossip(Msg, [], [node()]).
 
