@@ -211,7 +211,7 @@ must_update({ok, OldVersion}, Version) -> brick_hlc:before(OldVersion, Version).
 subscribe(StateName, EventName) -> 
 	brick_event:subscribe(?STATE_TYPE(StateName), EventName, self()),
 	ok.
-	
+
 unsubscribe(StateName, EventName) -> 
 	brick_event:unsubscribe(?STATE_TYPE(StateName), EventName, self()),
 	ok.

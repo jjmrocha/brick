@@ -38,9 +38,9 @@
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).	
-	
+
 whereis_service(Service) -> whereis_service(Service, true).
-		
+
 whereis_service(Service, false) -> nodes_with_service(Service);
 whereis_service(Service, true) ->
 	Local = case whereis(Service) of
@@ -49,25 +49,25 @@ whereis_service(Service, true) ->
 	end,
 	Remote = whereis_service(Service, false),
 	Local ++ Remote.
-	
+
 send_to_all(Service, Msg) ->
 	Nodes = whereis_service(Service, true),
 	send(Service, Nodes, Msg, 0).
-	
+
 send_to_remote(Service, Msg) ->
 	Nodes = whereis_service(Service, false),
 	send(Service, Nodes, Msg, 0).
 
 subscribe(Service) -> 
 	lists:foreach(fun(EventName) ->  
-			subscribe(Service, EventName) 
+				subscribe(Service, EventName) 
 		end, ?SERVICE_EVENTS).
-		
+
 unsubscribe(Service) -> 
 	lists:foreach(fun(EventName) ->  
-			unsubscribe(Service, EventName) 
+				unsubscribe(Service, EventName) 
 		end, ?SERVICE_EVENTS).	
-	
+
 subscribe(Service, EventName) ->
 	brick_event:subscribe(?SERVICE_TYPE(Service), EventName, self()),
 	ok.
@@ -98,12 +98,12 @@ handle_call(_Request, _From, State) ->
 %% handle_cast/2
 handle_cast(_Msg, State) ->
 	{noreply, State}.
-	
+
 %% handle_info/2
 handle_info(#brick_event{name=?BRICK_NODE_UP_EVENT, value=Node}, State) ->
 	update([Node]),
 	{noreply, State};
-	
+
 handle_info(#brick_event{name=?BRICK_NODE_DOWN_EVENT, value=Node}, State) ->
 	remove(Node),
 	{noreply, State};	
@@ -140,17 +140,17 @@ send(_Service, [], _Msg, Count) -> Count;
 send(Service, [Node|T], Msg, Count) ->
 	{Service, Node} ! Msg,
 	send(Service, T, Msg, Count + 1).
-	
+
 remote_whereis(Node) ->
 	case rpc:call(Node, erlang, registered, []) of
 		{badrpc, _Reason} -> [];
 		List -> List
 	end.
-	
+
 load() ->
 	{ok, OnlineNodes} = brick_cluster:online_nodes(),
 	update(OnlineNodes).
-	
+
 update() ->
 	{ok, OnlineNodes} = brick_cluster:online_nodes(),
 	RandomNodes = brick_util:random_get(OnlineNodes, 10),
@@ -162,22 +162,22 @@ update([Node|T]) ->
 	Local = services(Node),
 	Old = brick_util:not_in(Local, Remote),
 	lists:foreach(fun(Service) -> 
-			remove_node_from_service(Service, Node)
+				remove_node_from_service(Service, Node)
 		end, Old),
 	New = brick_util:not_in(Remote, Local),
 	lists:foreach(fun(Service) -> 
-			add_node_from_service(Service, Node)
+				add_node_from_service(Service, Node)
 		end, New),	
 	ets:insert(?NODE_TABLE, {Node, Remote}),
 	update(T).
-	
+
 remove(Node) ->
 	Services = services(Node),
 	lists:foreach(fun(Service) -> 
-			remove_node_from_service(Service, Node)
+				remove_node_from_service(Service, Node)
 		end, Services),
 	ets:delete(?NODE_TABLE, Node).
-	
+
 add_node_from_service(Service, Node) ->
 	Nodes = nodes_with_service(Service),
 	case lists:member(Node, Nodes) of
@@ -187,7 +187,7 @@ add_node_from_service(Service, Node) ->
 			brick_event:publish(?SERVICE_TYPE(Service), ?BRICK_SERVICE_UP_EVENT, #{node => Node, service => Service});
 		true -> ok
 	end.
-	
+
 remove_node_from_service(Service, Node) ->
 	Nodes = nodes_with_service(Service),
 	case lists:member(Node, Nodes) of

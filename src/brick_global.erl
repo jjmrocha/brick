@@ -14,43 +14,27 @@
 %% limitations under the License.
 %%
 
--module(brick_util).
+-module(brick_global).
+
+-define(CLUSTER_NAME(Cluster, Id), {brick, Cluster, Id}).
 
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([remove/2, common/2, not_in/2]).
--export([random_get/2]).
--export([shuffle/1]).
+-export([name/1]).
+-export([transaction/2, transaction/3]).
 
-remove([], List) -> List;
-remove([H|T], List) -> remove(T, lists:delete(H, List)).
+name(Id) -> ?CLUSTER_NAME(brick_system:cluster_name(), Id).
 
-common(_List1, []) -> [];
-common([], _List2) -> [];
-common(List1, List2) -> 
-	lists:filter(fun(Elem) -> 
-				lists:member(Elem, List2) 
-		end, List1).
+transaction(Id, Function) -> transaction(Id, Function, infinity).
 
-not_in([], _List2) -> [];
-not_in(List1, []) -> List1;
-not_in(List1, List2) ->
-	lists:filter(fun(E) -> 
-				not lists:member(E, List2) 
-		end, List1).
-
-random_get([], _Count) -> [];
-random_get(List, Count) -> random_get(shuffle(List), Count, []).
-
-shuffle([]) -> [];
-shuffle([Element]) -> [Element];
-shuffle(List) -> [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- List])].
+transaction(Id, Function, Retries) ->
+	Name = name(Id),
+	Nodes = brick_cluster:online_nodes(),
+	global:trans(Name, Function, Nodes, Retries).
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
-random_get(_All, 0, List) -> List;
-random_get([], _Count, List) -> List;
-random_get([H|T], Count, List) -> random_get(T, Count -1 , [H|List]).
+

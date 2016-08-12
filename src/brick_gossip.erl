@@ -31,7 +31,7 @@
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-	
+
 publish(StateName, StateValue, StateVersion) ->
 	gen_server:cast(?MODULE, {publish, StateName, StateValue, StateVersion}).
 
@@ -73,7 +73,7 @@ handle_cast(?GOSSIP_ENVELOPE(StateName, StateValue, StateVersion, From), State) 
 handle_cast({publish, StateName, StateValue, StateVersion}, State) ->
 	broadcast(?GOSSIP_MSG(StateName, StateValue, StateVersion)),
 	{noreply, State};
-	
+
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
@@ -87,15 +87,15 @@ handle_info({gossip}, State) ->
 		_ -> ok
 	end,
 	{noreply, State};
-	
+
 handle_info(timeout, State) ->
 	{ok, StateNames} = brick_state:state_names(),
 	lists:foreach(fun(StateName) -> 
-			{ok, StateValue, StateVersion} = brick_state:read_state(StateName),
-			gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion))
+				{ok, StateValue, StateVersion} = brick_state:read_state(StateName),
+				gossip(?GOSSIP_MSG(StateName, StateValue, StateVersion))
 		end, StateNames),
 	{noreply, State};
-	
+
 handle_info(_Info, State) ->
 	{noreply, State}.
 

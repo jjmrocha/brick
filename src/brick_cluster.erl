@@ -47,15 +47,15 @@ online_nodes() ->
 
 cluster_nodes() ->
 	gen_server:call(?MODULE, {cluster_nodes}).	
-	
+
 subscribe() -> 
 	lists:foreach(fun(EventName) ->  
-			subscribe(EventName) 
+				subscribe(EventName) 
 		end, ?CLUSTER_EVENTS).
-		
+
 unsubscribe() -> 
 	lists:foreach(fun(EventName) ->  
-			unsubscribe(EventName) 
+				unsubscribe(EventName) 
 		end, ?CLUSTER_EVENTS).
 
 subscribe(EventName) ->
@@ -65,7 +65,7 @@ subscribe(EventName) ->
 unsubscribe(EventName) ->
 	brick_event:unsubscribe(?MODULE, EventName, self()),
 	ok.	
-	
+
 cluster_name() -> brick_system:cluster_name().
 
 %% ====================================================================
