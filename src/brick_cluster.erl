@@ -18,6 +18,8 @@
 
 -include("brick_event.hrl").
 
+-define(CLUSTER_EVENTS, [?BRICK_NEW_NODE_EVENT, ?BRICK_NODE_DELETED_EVENT, ?BRICK_NODE_UP_EVENT, ?BRICK_NODE_DOWN_EVENT]).
+
 -behaviour(gen_server).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -27,8 +29,8 @@
 %% ====================================================================
 -export([start_link/0]).
 -export([add_node/1, remove_node/1]).
--export([online_nodes/0, known_nodes/0]).
--export([subscribe/0, unsubscribe/0]).
+-export([online_nodes/0, cluster_nodes/0]).
+-export([subscribe/0, subscribe/1, unsubscribe/0, unsubscribe/1]).
 -export([cluster_name/0]).
 
 start_link() ->
@@ -43,15 +45,25 @@ remove_node(Node) when is_atom(Node) ->
 online_nodes() ->
 	gen_server:call(?MODULE, {online_nodes}).
 
-known_nodes() ->
-	gen_server:call(?MODULE, {known_nodes}).	
+cluster_nodes() ->
+	gen_server:call(?MODULE, {cluster_nodes}).	
+	
+subscribe() -> 
+	lists:foreach(fun(EventName) ->  
+			subscribe(EventName) 
+		end, ?CLUSTER_EVENTS).
+		
+unsubscribe() -> 
+	lists:foreach(fun(EventName) ->  
+			unsubscribe(EventName) 
+		end, ?CLUSTER_EVENTS).
 
-subscribe() ->
-	brick_event:subscribe(?MODULE, self()),
+subscribe(EventName) ->
+	brick_event:subscribe(?MODULE, EventName, self()),
 	ok.
 
-unsubscribe() ->
-	brick_event:unsubscribe(?MODULE, self()),
+unsubscribe(EventName) ->
+	brick_event:unsubscribe(?MODULE, EventName, self()),
 	ok.	
 	
 cluster_name() -> brick_system:cluster_name().
@@ -59,7 +71,7 @@ cluster_name() -> brick_system:cluster_name().
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {known_nodes = [], online_nodes = [], timer}).
+-record(state, {cluster_nodes = [], online_nodes = [], timer}).
 
 %% init/1
 init([]) ->
@@ -72,36 +84,36 @@ init([]) ->
 handle_call({online_nodes}, _From, State=#state{online_nodes=OnlineNodes}) ->
 	{reply, {ok, OnlineNodes}, State};
 
-handle_call({known_nodes}, _From, State=#state{known_nodes=KnownNodes}) ->
-	{reply, {ok, KnownNodes}, State};
+handle_call({cluster_nodes}, _From, State=#state{cluster_nodes=ClusterNodes}) ->
+	{reply, {ok, ClusterNodes}, State};
 
-handle_call({add_node, Node}, _From,  State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
-	case {check_online(Node), lists:member(Node, KnownNodes)} of
+handle_call({add_node, Node}, _From,  State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
+	case {check_online(Node), lists:member(Node, ClusterNodes)} of
 		{pong, false} -> 
 			ClusterName = cluster_name(),
 			case rpc:call(Node, ?MODULE, cluster_name, []) of
 				{badrpc, _Reason} -> pang;
 				ClusterName -> 
-					KnownNodes1 = [Node|KnownNodes], 
+					ClusterNodes1 = [Node|ClusterNodes], 
 					OnlineNodes1 = [Node|OnlineNodes],
-					brick_state:save_topology_state(KnownNodes1),
-					brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
-					brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
-					{reply, ok, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
+					brick_state:save_topology_state(ClusterNodes1),
+					brick_event:publish(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
+					brick_event:publish(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
+					{reply, ok, State#state{cluster_nodes=ClusterNodes1, online_nodes=OnlineNodes1}};
 				_ -> {reply, {error, not_the_same_cluster}, State}
 			end;
 		{_, true} -> {reply, {error, already_member}, State};
 		{pang, _} -> {reply, {error, node_not_online}, State}
 	end;
 
-handle_call({remove_node, Node}, _From, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
-	case lists:member(Node, KnownNodes) of
+handle_call({remove_node, Node}, _From, State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
+	case lists:member(Node, ClusterNodes) of
 		true ->
-			KnownNodes1 = lists:delete(Node, KnownNodes),
+			ClusterNodes1 = lists:delete(Node, ClusterNodes),
 			OnlineNodes1 = lists:delete(Node, OnlineNodes),
-			brick_state:save_topology_state(KnownNodes1),
-			brick_event:event(?MODULE, ?BRICK_NODE_DELETED_EVENT, Node),
-			{reply, ok, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
+			brick_state:save_topology_state(ClusterNodes1),
+			brick_event:publish(?MODULE, ?BRICK_NODE_DELETED_EVENT, Node),
+			{reply, ok, State#state{cluster_nodes=ClusterNodes1, online_nodes=OnlineNodes1}};
 		_ -> {reply, {error, not_member}, State}
 	end;
 
@@ -117,40 +129,39 @@ handle_info({nodedown, Node}, State=#state{online_nodes=OnlineNodes}) ->
 	case lists:member(Node, OnlineNodes) of
 		false -> {noreply, State};
 		_ ->
-			brick_event:event(?MODULE, ?BRICK_NODE_DOWN_EVENT, Node),
+			brick_event:publish(?MODULE, ?BRICK_NODE_DOWN_EVENT, Node),
 			OnlineNodes1 = lists:delete(Node, OnlineNodes),
 			{noreply, State#state{online_nodes=OnlineNodes1}}
 	end;
 
-handle_info({nodeup, Node}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
-	case {lists:member(Node, KnownNodes), lists:member(Node, OnlineNodes)} of
+handle_info({nodeup, Node}, State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
+	case {lists:member(Node, ClusterNodes), lists:member(Node, OnlineNodes)} of
 		{false, _} -> {noreply, State};
 		{true, true} -> {noreply, State};
 		_ ->
-			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
+			brick_event:publish(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 			OnlineNodes1 = [Node|OnlineNodes],
 			{noreply, State#state{online_nodes=OnlineNodes1}}
 	end;	
 
-handle_info(Event, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) when ?is_brick_event(?BRICK_CLUSTER_CHANGED_EVENT, Event) ->
-	KnownNodes1 = Event#brick_event.value,
-	notify_new_nodes(KnownNodes1, KnownNodes),
-	{ok, OnlineNodes1} = online_nodes(KnownNodes1, OnlineNodes),
-	{noreply, State#state{known_nodes=KnownNodes1, online_nodes=OnlineNodes1}};
+handle_info(#brick_event{name=?BRICK_CLUSTER_CHANGED_EVENT, value=NewClusterNodes}, State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
+	notify_new_nodes(NewClusterNodes, ClusterNodes),
+	{ok, OnlineNodes1} = online_nodes(NewClusterNodes, OnlineNodes),
+	{noreply, State#state{cluster_nodes=NewClusterNodes, online_nodes=OnlineNodes1}};
 
-handle_info({update}, State=#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}) ->
-	{ok, OnlineNodes1} = online_nodes(KnownNodes, OnlineNodes),
+handle_info({update}, State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
+	{ok, OnlineNodes1} = online_nodes(ClusterNodes, OnlineNodes),
 	{noreply, State#state{online_nodes=OnlineNodes1}};
 
 handle_info(timeout, State) ->
 	net_kernel:monitor_nodes(true),
 	brick_state:subscribe_topology_events(),
-	KnownNodes = case brick_state:read_topology_state() of
+	ClusterNodes = case brick_state:read_topology_state() of
 		{ok, Topology, _Version} -> Topology;
 		_ -> [node()]
 	end,
-	{ok, OnlineNodes} = online_nodes(KnownNodes, []),
-	{noreply, State#state{known_nodes=KnownNodes, online_nodes=OnlineNodes}};
+	{ok, OnlineNodes} = online_nodes(ClusterNodes, []),
+	{noreply, State#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}};
 
 handle_info(_Info, State) ->
 	{noreply, State}.
@@ -186,7 +197,7 @@ check_online(Node) ->
 notify_new_nodes([], _) -> ok;
 notify_new_nodes([Node|T], OldList) -> 
 	case lists:member(Node, OldList) of
-		false -> brick_event:event(?MODULE, ?BRICK_NEW_NODE_EVENT, Node);
+		false -> brick_event:publish(?MODULE, ?BRICK_NEW_NODE_EVENT, Node);
 		_ -> ok
 	end,
 	notify_new_nodes(T, OldList).
@@ -196,7 +207,7 @@ online_nodes([Node|T], OnlineNodes) when Node =:= node() -> online_nodes(T, Onli
 online_nodes([Node|T], OnlineNodes) ->
 	case {check_online(Node), lists:member(Node, OnlineNodes)} of
 		{pong, false} -> 
-			brick_event:event(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
+			brick_event:publish(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 			online_nodes(T, [Node|OnlineNodes]);
 		_ -> online_nodes(T, OnlineNodes)
 	end.

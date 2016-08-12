@@ -18,7 +18,7 @@
 
 -include("brick_event.hrl").
 
--define(HANDLER(Type, Susbcriber), {?MODULE, {Type, Susbcriber}}).
+-define(HANDLER(Type, EventName, Susbcriber), {?MODULE, {Type, EventName, Susbcriber}}).
 
 -behaviour(gen_event).
 
@@ -26,34 +26,35 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([subscribe/2, unsubscribe/2, start_link/0]).
--export([event/3]).
+-export([start_link/0]).
+-export([subscribe/3, unsubscribe/3]).
+-export([publish/3]).
 
 start_link() ->
 	gen_event:start_link({local, ?MODULE}).
 
-subscribe(Type, Subscriber) ->
-	gen_event:add_handler(?MODULE, ?HANDLER(Type, Subscriber), [Type, Subscriber]).
+subscribe(Type, EventName, Subscriber) ->
+	gen_event:add_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), [Type, EventName, Subscriber]).
 
-unsubscribe(Type, Subscriber) ->
-	gen_event:delete_handler(?MODULE, ?HANDLER(Type, Subscriber), []).
+unsubscribe(Type, EventName, Subscriber) ->
+	gen_event:delete_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), []).
 
-event(Type, Name, Value) ->
-	Event = #brick_event{name=Name, value=Value},
+publish(Type, EventName, Value) ->
+	Event = #brick_event{name=EventName, value=Value},
 	gen_event:notify(?MODULE, {Type, Event}).
 
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {type, subscriber, ref}).
+-record(state, {type, name, subscriber, ref}).
 
 %% init/1
-init([Type, Subscriber]) ->
+init([Type, EventName, Subscriber]) ->
 	MonitorRef = erlang:monitor(process, Subscriber),
-	{ok, #state{type=Type, subscriber=Subscriber, ref=MonitorRef}}.
+	{ok, #state{type=Type, name=EventName, subscriber=Subscriber, ref=MonitorRef}}.
 
 %% handle_event/2
-handle_event({Type, Event}, State=#state{type=Type, subscriber=Subscriber}) ->
+handle_event({Type, Event=#brick_event{name=EventName}}, State=#state{type=Type, name=EventName, subscriber=Subscriber}) ->
 	Subscriber ! Event,
 	{ok, State};
 

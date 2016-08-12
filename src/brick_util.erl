@@ -19,12 +19,26 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([remove/2]).
+-export([remove/2, common/2, not_in/2]).
 -export([random_get/2]).
 -export([shuffle/1]).
 
 remove([], List) -> List;
 remove([H|T], List) -> remove(T, lists:delete(H, List)).
+
+common(_List1, []) -> [];
+common([], _List2) -> [];
+common(List1, List2) -> 
+	lists:filter(fun(Elem) -> 
+			lists:member(Elem, List2) 
+		end, List1).
+
+not_in([], _List2) -> [];
+not_in(List1, []) -> List1;
+not_in(List1, List2) ->
+	lists:filter(fun(E) -> 
+			not lists:member(E, List2) 
+		end, List1).
 
 random_get([], _Count) -> [];
 random_get(List, Count) -> random_get(shuffle(List), Count, []).

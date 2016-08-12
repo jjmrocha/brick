@@ -53,19 +53,15 @@ save_state(StateName, StateValue) ->
 save_state(StateName, StateValue, Version) ->
 	gen_server:cast(?MODULE, {save, StateName, StateValue, Version}).
 
-subscribe_topology_events() ->
-	subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
+subscribe_topology_events() -> subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
 
-unsubscribe_topology_events() ->
-	unsubscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
+unsubscribe_topology_events() -> unsubscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE).
 
-subscribe_state_events(StateName) ->
-	brick_event:subscribe(?STATE_TYPE(StateName), self()),
-	ok.
+subscribe_state_events(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE) -> subscribe(StateName, ?BRICK_CLUSTER_CHANGED_EVENT);
+subscribe_state_events(StateName) -> subscribe(StateName, ?BRICK_STATE_CHANGED_EVENT).
 
-unsubscribe_state_events(StateName) ->
-	brick_event:unsubscribe(?STATE_TYPE(StateName), self()),
-	ok.	
+unsubscribe_state_events(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE) -> unsubscribe(StateName, ?BRICK_CLUSTER_CHANGED_EVENT);
+unsubscribe_state_events(StateName) -> unsubscribe(StateName, ?BRICK_STATE_CHANGED_EVENT).
 
 state_names() ->
 	gen_server:call(?MODULE, {state_names}).
@@ -205,9 +201,17 @@ write(StateName, StateValue, Version, Mod, Data) ->
 	end.
 
 send_event(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE, StateValue) ->
-	brick_event:event(?STATE_TYPE(StateName), ?BRICK_CLUSTER_CHANGED_EVENT, StateValue);
+	brick_event:publish(?STATE_TYPE(StateName), ?BRICK_CLUSTER_CHANGED_EVENT, StateValue);
 send_event(StateName, StateValue) ->
-	brick_event:event(?STATE_TYPE(StateName), ?BRICK_STATE_CHANGED_EVENT, StateValue).
+	brick_event:publish(?STATE_TYPE(StateName), ?BRICK_STATE_CHANGED_EVENT, StateValue).
 
 must_update(error, _) -> true;
 must_update({ok, OldVersion}, Version) -> brick_hlc:before(OldVersion, Version).
+
+subscribe(StateName, EventName) -> 
+	brick_event:subscribe(?STATE_TYPE(StateName), EventName, self()),
+	ok.
+	
+unsubscribe(StateName, EventName) -> 
+	brick_event:unsubscribe(?STATE_TYPE(StateName), EventName, self()),
+	ok.

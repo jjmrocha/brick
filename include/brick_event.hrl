@@ -21,8 +21,11 @@
 -define(BRICK_NEW_NODE_EVENT,'$brick_new_node').
 -define(BRICK_NODE_DELETED_EVENT,'$brick_node_deleted').
 
--define(BRICK_NODE_UP_EVENT,'$brick_new_up').
+-define(BRICK_NODE_UP_EVENT,'$brick_node_up').
 -define(BRICK_NODE_DOWN_EVENT,'$brick_node_down').
 
 -define(BRICK_CLUSTER_CHANGED_EVENT,'$brick_cluster_changed').
 -define(BRICK_STATE_CHANGED_EVENT,'$brick_state_changed').
+
+-define(BRICK_SERVICE_UP_EVENT,'$brick_service_up').
+-define(BRICK_SERVICE_DOWN_EVENT,'$brick_service_down').
