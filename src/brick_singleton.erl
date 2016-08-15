@@ -58,7 +58,7 @@
 %% API functions
 %% ====================================================================
 -export([start_link/3, start/3]).
--export([call/2, call/3, cast/2]).
+-export([call/2, call/3, cast/2, send/2]).
 
 start_link(Name, Mod, Args) ->
 	gen_server:start_link(?MODULE, [Name, Mod, Args], []).
@@ -73,6 +73,9 @@ call(Name, Msg, Timeout) ->
 
 cast(Name, Msg) ->
 	gen_server:cast(?SINGLETON(Name), Msg).
+
+send(Name, Msg) ->
+	global:send(brick_global:name(Name), Msg).
 
 %% ====================================================================
 %% Behavioural functions
