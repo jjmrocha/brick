@@ -91,7 +91,7 @@ handle_call(Request, From, State=#state{mod=Mod, data=Data, singleton=none}) ->
 	handle_reply(Reply, State);
 
 handle_call(_Request, _From, State) ->
-	{noreply, State}.
+	{noreply, State, hibernate}.
 
 %% handle_cast/2
 handle_cast(Msg, State=#state{mod=Mod, data=Data, singleton=none}) ->
@@ -99,7 +99,7 @@ handle_cast(Msg, State=#state{mod=Mod, data=Data, singleton=none}) ->
 	handle_reply(Reply, State);
 
 handle_cast(_Msg, State) ->
-	{noreply, State}.
+	{noreply, State, hibernate}.
 
 %% handle_info/2
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}) ->
@@ -118,7 +118,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 				undefined -> {noreply, State, 0};
 				Pid -> 
 					MRef = erlang:monitor(process, Pid),
-					{noreply, State#state{singleton=MRef}}
+					{noreply, State#state{singleton=MRef}, hibernate}
 			end
 	end;
 
@@ -130,7 +130,7 @@ handle_info(Info, State=#state{mod=Mod, data=Data, singleton=none}) ->
 	handle_reply(Reply, State);
 
 handle_info(_Info, State) ->
-	{noreply, State}.
+	{noreply, State, hibernate}.
 
 %% terminate/2
 terminate(Reason, #state{mod=Mod, data=Data, singleton=none}) ->
