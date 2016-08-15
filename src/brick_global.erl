@@ -16,7 +16,7 @@
 
 -module(brick_global).
 
--define(CLUSTER_NAME(Cluster, Id), {brick, Cluster, Id}).
+-define(CLUSTER_NAME(Cluster, Id), {'$brick', Cluster, Id}).
 
 %% ====================================================================
 %% API functions

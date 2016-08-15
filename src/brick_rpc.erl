@@ -26,11 +26,11 @@
 -export([reply/2]).
 
 cast(Pid, Msg) ->
-	Pid ! ?BRICK_RPC_CAST(Msg),
-	ok.
+    Pid ! ?BRICK_RPC_CAST(Msg),
+    ok.
 
 call(Pid, Msg) ->
-	call(Pid, Msg, infinity).
+    call(Pid, Msg, infinity).
 
 call(Pid, Msg, Timeout) ->
     MRef = erlang:monitor(process, Pid),
@@ -47,8 +47,8 @@ call(Pid, Msg, Timeout) ->
     end.
 
 reply(?BRICK_RPC_FROM(From, Ref), Msg) ->
-	From ! ?BRICK_RPC_REPLY(Ref, Msg),
-	ok.
+    From ! ?BRICK_RPC_REPLY(Ref, Msg),
+    ok.
 
 %% ====================================================================
 %% Internal functions
