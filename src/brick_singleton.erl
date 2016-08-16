@@ -81,7 +81,6 @@ send(Name, Msg) ->
 %% Behavioural functions
 %% ====================================================================
 -record(state, {name, mod, args, data, singleton=none}).
-
 -define(update_state(State, Data), State#state{data=Data}).
 
 %% init/1
