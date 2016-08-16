@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--define(SINGLETON(Name), {global, brick_global:name(Name)}).
+-define(SINGLETON(Name), {global, Name}).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -75,7 +75,7 @@ cast(Name, Msg) ->
 	gen_server:cast(?SINGLETON(Name), Msg).
 
 send(Name, Msg) ->
-	global:send(brick_global:name(Name), Msg).
+	global:send(Name, Msg).
 
 %% ====================================================================
 %% Behavioural functions
@@ -106,8 +106,7 @@ handle_cast(_Msg, State) ->
 
 %% handle_info/2
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}) ->
-	GlobalName = brick_global:name(Name),
-	case global:register_name(GlobalName, self()) of
+	case global:register_name(Name, self()) of
 		yes ->
 			case Mod:init(Args) of
 				{ok, Data} -> {noreply, ?update_state(State, Data)};
@@ -117,7 +116,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 				ignore -> {stop, ignore, State}
 			end;
 		no ->
-			case global:whereis_name(GlobalName) of
+			case global:whereis_name(Name) of
 				undefined -> {noreply, State, 0};
 				Pid -> 
 					MRef = erlang:monitor(process, Pid),
