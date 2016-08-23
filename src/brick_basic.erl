@@ -51,7 +51,7 @@
 
 -callback code_change(OldVsn :: (term() | {down, term()}), State :: term(), Extra :: term()) ->
 	{ok, NewState :: term()} | {error, Reason :: term()}.
-	
+
 -optional_callbacks([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% ====================================================================
@@ -84,13 +84,13 @@ start(Mod, Args) -> start(?BRICK_BASIC_NONAME, Mod, Args).
 start(Name, Mod, Args) ->
 	Meta = meta(Mod),
 	proc_lib:start(?MODULE, do_init, [self(), Name, Meta, Args]).
-	
+
 start_link(Mod, Args) -> start_link(?BRICK_BASIC_NONAME, Mod, Args).
 
 start_link(Name, Mod, Args) ->
 	Meta = meta(Mod),
 	proc_lib:start_link(?MODULE, do_init, [self(), Name, Meta, Args]).
-	
+
 stop(Process) -> stop(Process, normal, infinity).
 
 stop(Process, Reason, Timeout) -> proc_lib:stop(Process, Reason, Timeout).
@@ -110,20 +110,28 @@ reply(From, Msg) -> brick_rpc:reply(From, Msg).
 -record(module_meta_record, {mod, init, handle_call, handle_cast, handle_info, terminate, code_change}).
 
 meta(Module) ->
+	Exports = Module:module_info(exports),
 	Meta = #module_meta_record{
-		mod=Module,
-		init=erlang:function_exported(Module, init, 1), 
-		handle_call=erlang:function_exported(Module, handle_call, 4), 
-		handle_cast=erlang:function_exported(Module, handle_cast, 2), 
-		handle_info=erlang:function_exported(Module, handle_info, 2), 
-		terminate=erlang:function_exported(Module, terminate, 2), 
-		code_change=erlang:function_exported(Module, code_change, 3)
-	},
+			mod=Module,
+			init=exported(init, 1, Exports), 
+			handle_call=exported(handle_call, 3, Exports), 
+			handle_cast=exported(handle_cast, 2, Exports), 
+			handle_info=exported(handle_info, 2, Exports), 
+			terminate=exported(terminate, 2, Exports), 
+			code_change=exported(code_change, 3, Exports)
+			},
 	if 
-		Meta#module_meta_record.handle_call,
-		Meta#module_meta_record.handle_cast,
-		Meta#module_meta_record.handle_info -> Meta;
+		Meta#module_meta_record.handle_call;
+				Meta#module_meta_record.handle_cast;
+				Meta#module_meta_record.handle_info -> Meta;
 		true -> exit(invalid_module)
+	end.
+
+
+exported(Function, Arity, Exports) ->
+	case lists:keyfind(Function, 1, Exports) of 
+		{Function, Arity} -> true;
+		_ -> false
 	end.
 
 %% ====================================================================
@@ -132,7 +140,7 @@ meta(Module) ->
 do_init(Parent, Name, Meta=#module_meta_record{init=DoInit, mod=Mod}, Args) ->
 	register_name(Name),
 	Debug = sys:debug_options([]),
-	case invoke(DoInit, Mod, init, Args, {ok, []}) of
+	case invoke(DoInit, Mod, init, [Args], {ok, []}) of
 		{ok, State} ->
 			proc_lib:init_ack(Parent, {ok, self()}), 	
 			loop(Parent, Debug, Name, Meta, State, infinity);
@@ -143,12 +151,12 @@ do_init(Parent, Name, Meta=#module_meta_record{init=DoInit, mod=Mod}, Args) ->
 		{'EXIT', Reason} -> stop_init(Parent, Name, Reason);
 		Other -> stop_init(Parent, Name, {bad_return_value, Other})
 	end.
-	
+
 stop_init(Parent, Name, Error) ->
 	unregister_name(Name),
 	proc_lib:init_ack(Parent, {error, Error}),
 	exit(Error).
-	
+
 register_name(?BRICK_BASIC_NONAME) -> ok;
 register_name(Name) -> register(Name, self()).
 
@@ -166,18 +174,18 @@ loop(Parent, Debug, Name, Meta, State, Timeout) ->
 	after Timeout -> timeout
 	end,
 	handle_request(Request, Parent, Debug, Name, Meta, State, Timeout).
-	
-handle_request(?BRICK_RPC_CALL(From, Msg), Parent, Debug, Name, Meta, State, _) ->
+
+handle_request(?BRICK_RPC_CALL(From, Msg), Parent, Debug, Name, Meta, State, _TimeOrHib) ->
 	do_call(From, Msg, Parent, Debug, Name, Meta, State);
-handle_request(?BRICK_RPC_CAST(Msg), Parent, Debug, Name, Meta, State, _) ->
+handle_request(?BRICK_RPC_CAST(Msg), Parent, Debug, Name, Meta, State, _TimeOrHib) ->
 	do_cast(Msg, Parent, Debug, Name, Meta, State);	
 handle_request({system, From, Request}, Parent, Debug, Name, Meta, State, TimeOrHib) ->
 	sys:handle_system_msg(Request, From, Parent, ?MODULE, Debug, [Name, Meta, State, TimeOrHib]);
-handle_request({'EXIT', Parent, Reason}, Parent, _Debug, Name, Meta, State, _) ->
+handle_request({'EXIT', Parent, Reason}, Parent, _Debug, Name, Meta, State, _TimeOrHib) ->
 	terminate(Reason, Name, Meta, State);	
-handle_request(Info, Parent, Debug, Name, Meta, State, _) -> 
+handle_request(Info, Parent, Debug, Name, Meta, State, _TimeOrHib) -> 
 	do_info(Info, Parent, Debug, Name, Meta, State).
-	
+
 do_call(From, Msg, Parent, Debug, Name, Meta=#module_meta_record{handle_call=DoCall, mod=Mod}, State) -> 
 	Return = invoke(DoCall, Mod, handle_call, [Msg, From, State], {noreply, State}),
 	handle_return(Return, From, Parent, Debug, Name, Meta).
@@ -185,11 +193,11 @@ do_call(From, Msg, Parent, Debug, Name, Meta=#module_meta_record{handle_call=DoC
 do_cast(Msg, Parent, Debug, Name, Meta=#module_meta_record{handle_cast=DoCast, mod=Mod}, State) -> 
 	Return = invoke(DoCast, Mod, handle_cast, [Msg, State], {noreply, State}),
 	handle_return(Return, none, Parent, Debug, Name, Meta).
-	
+
 do_info(Info, Parent, Debug, Name, Meta=#module_meta_record{handle_info=DoInfo, mod=Mod}, State) -> 
 	Return = invoke(DoInfo, Mod, handle_info, [Info, State], {noreply, State}),
 	handle_return(Return, none, Parent, Debug, Name, Meta).
-	
+
 handle_return({reply, Reply, NewState}, From, Parent, Debug, Name, Meta) -> 
 	reply(From, Reply),
 	loop(Parent, Debug, Name, Meta, NewState, infinity);
@@ -213,15 +221,15 @@ terminate(Reason, Name, #module_meta_record{terminate=DoTerminate, mod=Mod}, Sta
 
 system_continue(Parent, Debug, [Name, Meta, State, TimeOrHib]) -> loop(Parent, Debug, Name, Meta, State, TimeOrHib).
 
-system_terminate(Reason, _Parent, _Debug, [Name, Meta, State, _]) -> terminate(Reason, Name, Meta, State).
+system_terminate(Reason, _Parent, _Debug, [Name, Meta, State, _TimeOrHib]) -> terminate(Reason, Name, Meta, State).
 
-system_code_change([Name, Meta=#module_meta_record{code_change=DoCodeChange, mod=Mod}, State, TimeOrHib], _Module, OldVsn, Extra) -> 
+system_code_change([Name, #module_meta_record{code_change=DoCodeChange, mod=Mod}, State, TimeOrHib], _Module, OldVsn, Extra) -> 
 	case invoke(DoCodeChange, Mod, code_change, [OldVsn, State, Extra], {ok, State}) of
-		{ok, NewState} -> {ok, [Name, Meta, NewState, TimeOrHib]};
+		{ok, NewState} -> {ok, [Name, meta(Mod), NewState, TimeOrHib]};
 		{'EXIT', Reason} -> {error, Reason};
 		Other -> Other
 	end.
-	
+
 wakeup(Parent, Debug, Name, Meta, State) -> 
 	receive
 		Request -> handle_request(Request, Parent, Debug, Name, Meta, State, hibernate)
