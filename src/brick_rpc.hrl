@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%
 
--define(BRICK_RPC_FROM(From, Ref), {From, Ref}).
--define(BRICK_RPC_CALL(From, Ref, Msg), {'$call', ?BRICK_RPC_FROM(From, Ref), Msg}).
+-define(BRICK_RPC_FROM(Pid, Ref), {Pid, Ref}).
+-define(BRICK_RPC_CALL(From, Msg), {'$call', From, Msg}).
 -define(BRICK_RPC_REPLY(Ref, Msg), {'$reply', Ref, Msg}).
 -define(BRICK_RPC_CAST(Msg), {'$cast', Msg}).
