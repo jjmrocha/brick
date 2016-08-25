@@ -18,3 +18,5 @@
 -define(BRICK_RPC_CALL(From, Msg), {'$call', From, Msg}).
 -define(BRICK_RPC_REPLY(Ref, Msg), {'$reply', Ref, Msg}).
 -define(BRICK_RPC_CAST(Msg), {'$cast', Msg}).
+
+-define(BRICK_RPC_NONAME, '$brick_rpc_noname').

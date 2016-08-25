@@ -18,8 +18,6 @@
 
 -include("brick_rpc.hrl").
 
--define(BRICK_QUEUE_NONAME, '$brick_queue_noname').
-
 %% ====================================================================
 %% API
 %% ====================================================================
@@ -45,18 +43,21 @@
 %% ====================================================================
 %% API Implementation
 %% ====================================================================
-
-start(Options) -> start(?BRICK_QUEUE_NONAME, Options).
+start(Options) -> start(?BRICK_RPC_NONAME, Options).
 
 start(Name, Options) -> do_start(start, Name, Options).
 
-start_link(Options) -> start_link(?BRICK_QUEUE_NONAME, Options).
+start_link(Options) -> start_link(?BRICK_RPC_NONAME, Options).
 
 start_link(Name, Options) -> do_start(start_link, Name, Options).
 
 stop(Process) -> stop(Process, normal, infinity).
 
-stop(Process, Reason, Timeout) -> proc_lib:stop(Process, Reason, Timeout).
+stop(Process, Reason, Timeout) -> 
+	case brick_rpc:whereis_name(Process) of
+		undefined -> exit(noproc);
+		Pid -> proc_lib:stop(Pid, Reason, Timeout)
+	end.
 
 flush(Process) -> brick_rpc:cast(Process, flush).
 
@@ -69,7 +70,6 @@ push(Process, Fun) -> brick_rpc:cast(Process, {push, Fun}).
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-
 -record(options, {pool_size, priority, hibernate}).
 -record(state, {queue, count}).
 
@@ -97,17 +97,17 @@ validate([{hibernate, Value}|T], Options) when (is_integer(Value) andalso Value 
 validate(_, _) -> {error, invalid_options}.
 
 do_init(Parent, Name, Options) ->
-	register_name(Name),
-	Debug = sys:debug_options([]),
-	proc_lib:init_ack(Parent, {ok, self()}), 
-	State = #state{queue = queue:new(), count = 0},
-	loop(Parent, Debug, Name, Options, State).
-
-register_name(?BRICK_QUEUE_NONAME) -> ok;
-register_name(Name) -> register(Name, self()).
-
-unregister_name(?BRICK_QUEUE_NONAME) -> ok;
-unregister_name(Name) -> unregister(Name).
+	case brick_rpc:register_name(Name, self()) of
+		true ->
+			Debug = sys:debug_options([]),
+			proc_lib:init_ack(Parent, {ok, self()}), 
+			State = #state{queue = queue:new(), count = 0},
+			loop(Parent, Debug, Name, Options, State);
+		false ->
+			Error = already_started,
+			proc_lib:init_ack(Parent, {error, Error}),
+			exit(Error)
+	end.
 
 loop(Parent, Debug, Name, Options, State) ->
 	Request = receive
@@ -147,7 +147,7 @@ system_terminate(Reason, _Parent, _Debug, [Name, _Options, _State]) -> terminate
 system_code_change([Name, Options, State], _Module, _OldVsn, _Extra) -> {ok, [Name, Options, State]}.
 
 terminate(Reason, Name) ->
-	unregister_name(Name),
+	brick_rpc:unregister_name(Name),
 	exit(Reason).
 
 run(Fun, Priority) -> spawn_opt(Fun, [monitor, {priority, Priority}]).
@@ -157,7 +157,6 @@ wakeup(Parent, Debug, Name, Options, State) -> loop(Parent, Debug, Name, Options
 %% ====================================================================
 %% CALL
 %% ====================================================================
-
 handle_call(queue_size, _Options, State=#state{queue=Queue}) -> 
 	Reply = {ok, queue:len(Queue)},
 	{Reply, State};
@@ -173,7 +172,6 @@ handle_call(_Msg, _Options, State) ->
 %% ====================================================================
 %% CAST
 %% ====================================================================
-
 handle_cast({push, Fun}, #options{pool_size=Max}, State=#state{queue=Queue, count=Max}) ->
 	NewQueue = queue:in(Fun, Queue),
 	State#state{queue=NewQueue};
@@ -190,7 +188,6 @@ handle_cast(_Msg, _Options, State) -> State.
 %% ====================================================================
 %% INFO
 %% ====================================================================
-
 handle_info({'DOWN', _, _, _, _}, #options{priority=Priority}, State=#state{queue=Queue, count=Count}) ->
 	case queue:out(Queue) of
 		{empty, _} -> State#state{count=Count - 1};
