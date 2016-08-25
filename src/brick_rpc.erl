@@ -1,0 +1,61 @@
+%%
+%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
+%% 
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%
+
+-module(brick_rpc).
+
+-include("brick_rpc.hrl").
+
+%% ====================================================================
+%% API functions
+%% ====================================================================
+-export([cast/2]).
+-export([multi_cast/3]).
+-export([call/2, call/3]).
+-export([reply/2]).
+
+cast(Process, Msg) ->
+    Process ! ?BRICK_RPC_CAST(Msg),
+    ok.
+
+multi_cast([], _Name, _Msg) -> ok;
+multi_cast([Node|T], Name, Msg) ->
+    {Name, Node} ! ?BRICK_RPC_CAST(Msg),
+    multi_cast(T, Name, Msg).
+
+call(Process, Msg) ->
+    call(Process, Msg, infinity).
+
+call(Process, Msg, Timeout) ->
+    MRef = erlang:monitor(process, Process),
+    Process ! ?BRICK_RPC_CALL(?BRICK_RPC_FROM(self(), MRef), Msg),
+    receive
+        ?BRICK_RPC_REPLY(MRef, Reply) ->
+            erlang:demonitor(MRef, [flush]),
+            Reply;
+        {'DOWN', MRef, _, _, Reason} ->
+            exit(Reason)
+    after Timeout ->
+            erlang:demonitor(MRef, [flush]),
+            exit(timeout)
+    end.
+
+reply(?BRICK_RPC_FROM(Pid, Ref), Msg) ->
+    Pid ! ?BRICK_RPC_REPLY(Ref, Msg),
+    ok.
+
+%% ====================================================================
+%% Internal functions
+%% ====================================================================
