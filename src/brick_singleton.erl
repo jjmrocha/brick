@@ -112,7 +112,8 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 				{ok, Data, hibernate} -> {noreply, ?update_state(State, Data), hibernate};
 				{ok, Data, Timeout} -> {noreply, ?update_state(State, Data), Timeout};
 				{stop, Reason} -> {stop, Reason, State};
-				ignore -> {stop, ignore, State}
+				ignore -> {stop, ignore, State};
+				Other -> Other
 			end;
 		no ->
 			case global:whereis_name(Name) of
@@ -162,4 +163,5 @@ handle_reply({noreply, Data}, State) -> {noreply, ?update_state(State, Data)};
 handle_reply({noreply, Data, hibernate}, State) -> {noreply, ?update_state(State, Data), hibernate};
 handle_reply({noreply, Data, Timeout}, State) -> {noreply, ?update_state(State, Data), Timeout};
 handle_reply({stop, Reason , Reply, Data}, State) -> {stop, Reason , Reply, ?update_state(State, Data)};
-handle_reply({stop, Reason, Data}, State) -> {stop, Reason, ?update_state(State, Data)}.
+handle_reply({stop, Reason, Data}, State) -> {stop, Reason, ?update_state(State, Data)};
+handle_reply(Other, _State) -> Other.
