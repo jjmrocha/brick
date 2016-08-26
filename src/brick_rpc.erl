@@ -22,7 +22,7 @@
 %% API functions
 %% ====================================================================
 -export([cast/2]).
--export([multi_cast/3]).
+-export([multicast/3]).
 -export([call/2, call/3]).
 -export([reply/2]).
 -export([whereis_name/1, register_name/2, unregister_name/1]).
@@ -31,10 +31,10 @@ cast(Process, Msg) ->
 	send(Process, ?BRICK_RPC_CAST(Msg)),
 	ok.
 
-multi_cast([], _Name, _Msg) -> ok;
-multi_cast([Node|T], Name, Msg) ->
+multicast([], _Name, _Msg) -> ok;
+multicast([Node|T], Name, Msg) ->
     {Name, Node} ! ?BRICK_RPC_CAST(Msg),
-    multi_cast(T, Name, Msg).
+    multicast(T, Name, Msg).
 
 call(Process, Msg) ->
     call(Process, Msg, 5000).
@@ -52,7 +52,7 @@ call(Process, Msg, Timeout) ->
     after Timeout ->
             erlang:demonitor(MRef, [flush]),
             exit(timeout)
-    end.	
+    end.
 
 reply(?BRICK_RPC_FROM(Pid, Ref), Msg) ->
     Pid ! ?BRICK_RPC_REPLY(Ref, Msg),
