@@ -25,7 +25,8 @@
 		brick_event,
 		brick_gossip,
 		brick_hlc,
-		brick_service
+		brick_service,
+		brick_async
 	]},
 	{applications, [
 		kernel,

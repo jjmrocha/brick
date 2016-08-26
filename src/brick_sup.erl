@@ -40,11 +40,12 @@ init([]) ->
 	Cluster = #{id => brick_cluster, start => {brick_cluster, start_link, []}, restart => permanent, type => worker},
 	Gossip = #{id => brick_gossip, start => {brick_gossip, start_link, []}, restart => permanent, type => worker},
 	Service = #{id => brick_service, start => {brick_service, start_link, []}, restart => permanent, type => worker},
+	Async = #{id => brick_async, start => {brick_async, start_link, []}, restart => permanent, type => supervisor},
 	
 	Optional = optional(),
 	
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
-	Procs = [Event, State, Clock, Cluster, Gossip, Service] ++ Optional,
+	Procs = [Event, State, Clock, Cluster, Gossip, Service, Async] ++ Optional,
 	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================
