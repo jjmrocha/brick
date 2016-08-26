@@ -14,11 +14,9 @@
 %% limitations under the License.
 %%
 
--module(brick_singleton).
+-module(brick_pool).
 
 -behaviour(gen_server).
-
--define(SINGLETON(Name), {global, Name}).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -27,26 +25,23 @@
 %% ====================================================================
 
 -callback init(Args :: term()) ->
-	{ok, State :: term()} | {ok, State :: term(), timeout() | hibernate} |
-	{stop, Reason :: term()} | ignore.
+	{ok, State :: term()} |
+	{stop, Reason :: term()} | 
+	ignore.
 
 -callback handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) ->
-	{reply, Reply :: term(), NewState :: term()} |
-	{reply, Reply :: term(), NewState :: term(), timeout() | hibernate} |
-	{noreply, NewState :: term()} |
-	{noreply, NewState :: term(), timeout() | hibernate} |
-	{stop, Reason :: term(), Reply :: term(), NewState :: term()} |
-	{stop, Reason :: term(), NewState :: term()}.
+	{reply, Reply :: term()} |
+	noreply |
+	{stop, Reason :: term(), Reply :: term()} |
+	{stop, Reason :: term()}.
 
 -callback handle_cast(Request :: term(), State :: term()) ->
-	{noreply, NewState :: term()} |
-	{noreply, NewState :: term(), timeout() | hibernate} |
-	{stop, Reason :: term(), NewState :: term()}.
+	noreply |
+	{stop, Reason :: term()}.
 
 -callback handle_info(Info :: timeout | term(), State :: term()) ->
-	{noreply, NewState :: term()} |
-	{noreply, NewState :: term(), timeout() | hibernate} |
-	{stop, Reason :: term(), NewState :: term()}.
+	noreply |
+	{stop, Reason :: term()}.
 
 -callback terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()), State :: term()) ->
 	term().
@@ -60,14 +55,13 @@
 -export([start_link/3, start/3]).
 -export([call/2, call/3, cast/2, send/2]).
 
-start_link(Name, Mod, Args) ->
+start_link(Name, Mod, Args, Options) ->
 	gen_server:start_link(?MODULE, [Name, Mod, Args], []).
 
 start(Name, Mod, Args) ->
 	gen_server:start(?MODULE, [Name, Mod, Args], []).
 
-call(Name, Msg) -> 
-	gen_server:call(?SINGLETON(Name), Msg).
+call(Name, Msg) -> call(Name, Msg, infinity).
 
 call(Name, Msg, Timeout) ->
 	gen_server:call(?SINGLETON(Name), Msg, Timeout).
