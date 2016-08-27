@@ -18,6 +18,9 @@
 
 -behaviour(gen_server).
 
+-define(EXIT_REASON(Reason), {'$brick_pool_exit', Reason}).
+-define(STOP_REASON(Reason), {'$brick_pool_stop', Reason}).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% ====================================================================
@@ -52,111 +55,121 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([start_link/3, start/3]).
--export([call/2, call/3, cast/2, send/2]).
+-export([start_link/3, start_link/4]).
+-export([start/3, start/4]).
+-export([stop/1, stop/3]).
+-export([call/2, call/3, cast/2]).
+
+start_link(Mod, Args, Options) ->
+	gen_server:start_link(?MODULE, [Mod, Args, Options], []).
 
 start_link(Name, Mod, Args, Options) ->
-	gen_server:start_link(?MODULE, [Name, Mod, Args], []).
+	gen_server:start_link(Name, ?MODULE, [Mod, Args, Options], []).
 
-start(Name, Mod, Args) ->
-	gen_server:start(?MODULE, [Name, Mod, Args], []).
+start(Mod, Args, Options) ->
+	gen_server:start(?MODULE, [Mod, Args, Options], []).
 
-call(Name, Msg) -> call(Name, Msg, infinity).
+start(Name, Mod, Args, Options) ->
+	gen_server:start(Name, ?MODULE, [Mod, Args, Options], []).
 
-call(Name, Msg, Timeout) ->
-	gen_server:call(?SINGLETON(Name), Msg, Timeout).
+stop(Process) -> 
+	gen_server:stop(Process).
 
-cast(Name, Msg) ->
-	gen_server:cast(?SINGLETON(Name), Msg).
+stop(Process, Reason, Timeout) -> 
+	gen_server:stop(Process, Reason, Timeout).
 
-send(Name, Msg) ->
-	global:send(Name, Msg).
+call(Process, Msg) -> 
+	gen_server:call(Process, Msg).
+
+call(Process, Msg, Timeout) ->
+	gen_server:call(Process, Msg, Timeout).
+
+cast(Process, Msg) ->
+	gen_server:cast(Process, Msg).
 
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {name, mod, args, data, singleton=none}).
--define(update_state(State, Data), State#state{data=Data}).
+-record(state, {queue, mod, data}).
 
 %% init/1
-init([Name, Mod, Args]) ->
-	{ok, #state{name=Name, mod=Mod, args=Args}, 0}.
+init([Mod, Args, Options]) ->
+	case Mod:init(Args) of
+		{ok, Data} ->
+			process_flag(trap_exit, true),
+			{ok, Pid} = brick_queue:start_link(Options),
+			{ok, #state{queue=Pid, mod=Mod, data=Data}};
+		{stop, Reason} -> {stop, Reason};
+		ignore -> ignore;
+		Other -> {stop, {invalid_return, Other}}
+	end.
 
 %% handle_call/3
-handle_call(Request, From, State=#state{mod=Mod, data=Data, singleton=none}) ->
-	Reply = Mod:handle_call(Request, From, Data),
-	handle_reply(Reply, State);
-
-handle_call(_Request, _From, State) ->
-	{noreply, State, hibernate}.
+handle_call(Request, From, State=#state{queue=Pid, mod=Mod, data=Data}) ->
+	Server = self(),
+	brick_queue:push(Pid, fun() ->
+				try Mod:handle_call(Request, From, Data) of
+					{reply, Reply} -> gen_server:reply(From, Reply);
+					noreply -> ok;
+					{stop, Reason, Reply} ->
+						gen_server:reply(From, Reply),
+						send_stop(Server, Reason);
+					{stop, Reason} -> send_stop(Server, Reason);
+					Other -> send_exit(Server, {invalid_return, Other})
+				catch _:Reason -> send_exit(Server, Reason)
+				end
+		end),
+	{noreply, State}.
 
 %% handle_cast/2
-handle_cast(Msg, State=#state{mod=Mod, data=Data, singleton=none}) ->
-	Reply = Mod:handle_cast(Msg, Data),
-	handle_reply(Reply, State);
-
-handle_cast(_Msg, State) ->
-	{noreply, State, hibernate}.
+handle_cast(Msg, State=#state{queue=Pid, mod=Mod, data=Data}) ->
+	Server = self(),
+	brick_queue:push(Pid, fun() ->
+				try Mod:handle_cast(Msg, Data) of
+					noreply -> ok;
+					{stop, Reason} -> send_stop(Server, Reason);
+					Other -> send_exit(Server, {invalid_return, Other})
+				catch _:Reason -> send_exit(Server, Reason)
+				end
+		end),
+	{noreply, State}.
 
 %% handle_info/2
-handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}) ->
-	case global:register_name(Name, self()) of
-		yes ->
-			case Mod:init(Args) of
-				{ok, Data} -> {noreply, ?update_state(State, Data)};
-				{ok, Data, hibernate} -> {noreply, ?update_state(State, Data), hibernate};
-				{ok, Data, Timeout} -> {noreply, ?update_state(State, Data), Timeout};
-				{stop, Reason} -> {stop, Reason, State};
-				ignore -> {stop, ignore, State};
-				Other -> Other
-			end;
-		no ->
-			case global:whereis_name(Name) of
-				undefined -> {noreply, State, 0};
-				Pid -> 
-					MRef = erlang:monitor(process, Pid),
-					{noreply, State#state{singleton=MRef}, hibernate}
-			end
-	end;
+handle_info({'EXIT', _FromPid, ?STOP_REASON(Reason)}, State) ->
+	{stop, Reason, State};
 
-handle_info({'DOWN', MRef, _, _, _}, State=#state{singleton=MRef}) ->
-	{noreply, State#state{singleton=none}, 0};
+handle_info({'EXIT', _FromPid, ?EXIT_REASON(Reason)}, _State) ->
+	exit(Reason);
 
-handle_info(Info, State=#state{mod=Mod, data=Data, singleton=none}) ->
-	Reply = Mod:handle_info(Info, Data),
-	handle_reply(Reply, State);
-
-handle_info(_Info, State) ->
-	{noreply, State, hibernate}.
+handle_info(Info, State=#state{queue=Pid, mod=Mod, data=Data}) ->
+	Server = self(),
+	brick_queue:push(Pid, fun() ->
+				try Mod:handle_info(Info, Data) of
+					noreply -> ok;
+					{stop, Reason} -> send_stop(Server, Reason);
+					Other -> send_exit(Server, {invalid_return, Other})
+				catch _:Reason -> send_exit(Server, Reason)
+				end
+		end),
+	{noreply, State}.
 
 %% terminate/2
-terminate(Reason, #state{mod=Mod, data=Data, singleton=none}) ->
-	Mod:terminate(Reason, Data);
-
-terminate(_Reason, #state{singleton=MRef}) ->
-	erlang:demonitor(MRef),
-	ok.
+terminate(Reason, #state{mod=Mod, data=Data}) ->
+	Mod:terminate(Reason, Data).
 
 %% code_change/3
-code_change(OldVsn, State=#state{mod=Mod, data=Data, singleton=none}, Extra) ->
+code_change(OldVsn, State=#state{mod=Mod, data=Data}, Extra) ->
 	case Mod:code_change(OldVsn, Data, Extra) of
-		{ok, NewData} -> {ok, ?update_state(State, NewData)};
+		{ok, NewData} -> {ok, State#state{data=NewData}};
 		{error, Reason} -> {error, Reason}
-	end;
-
-code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
+	end.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
-handle_reply({reply, Reply, Data}, State) -> {reply, Reply, ?update_state(State, Data)};
-handle_reply({reply, Reply, Data, hibernate}, State) -> {reply, Reply, ?update_state(State, Data), hibernate};
-handle_reply({reply, Reply, Data, Timeout}, State) -> {reply, Reply, ?update_state(State, Data), Timeout};
-handle_reply({noreply, Data}, State) -> {noreply, ?update_state(State, Data)};
-handle_reply({noreply, Data, hibernate}, State) -> {noreply, ?update_state(State, Data), hibernate};
-handle_reply({noreply, Data, Timeout}, State) -> {noreply, ?update_state(State, Data), Timeout};
-handle_reply({stop, Reason , Reply, Data}, State) -> {stop, Reason , Reply, ?update_state(State, Data)};
-handle_reply({stop, Reason, Data}, State) -> {stop, Reason, ?update_state(State, Data)};
-handle_reply(Other, _State) -> Other.
+send_stop(Server, Reason) ->
+	exit(Server, ?STOP_REASON(Reason)).
+
+send_exit(Server, Reason) ->
+	exit(Server, ?EXIT_REASON(Reason)).

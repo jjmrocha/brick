@@ -33,36 +33,36 @@ cast(Process, Msg) ->
 
 multicast([], _Name, _Msg) -> ok;
 multicast([Node|T], Name, Msg) ->
-    {Name, Node} ! ?BRICK_RPC_CAST(Msg),
-    multicast(T, Name, Msg).
+	{Name, Node} ! ?BRICK_RPC_CAST(Msg),
+	multicast(T, Name, Msg).
 
 call(Process, Msg) ->
-    call(Process, Msg, 5000).
+	call(Process, Msg, 5000).
 
 call(Process, Msg, Timeout) ->
 	Pid = pid(Process),
-    MRef = erlang:monitor(process, Pid),
-    Pid ! ?BRICK_RPC_CALL(?BRICK_RPC_FROM(self(), MRef), Msg),
-    receive
-        ?BRICK_RPC_REPLY(MRef, Reply) ->
-            erlang:demonitor(MRef, [flush]),
-            Reply;
-        {'DOWN', MRef, _, _, Reason} ->
-            exit(Reason)
-    after Timeout ->
-            erlang:demonitor(MRef, [flush]),
-            exit(timeout)
-    end.
+	MRef = erlang:monitor(process, Pid),
+	Pid ! ?BRICK_RPC_CALL(?BRICK_RPC_FROM(self(), MRef), Msg),
+	receive
+		?BRICK_RPC_REPLY(MRef, Reply) ->
+			erlang:demonitor(MRef, [flush]),
+			Reply;
+		{'DOWN', MRef, _, _, Reason} ->
+			exit(Reason)
+	after Timeout ->
+			erlang:demonitor(MRef, [flush]),
+			exit(timeout)
+	end.
 
 reply(?BRICK_RPC_FROM(Pid, Ref), Msg) ->
-    Pid ! ?BRICK_RPC_REPLY(Ref, Msg),
-    ok.
-	
+	Pid ! ?BRICK_RPC_REPLY(Ref, Msg),
+	ok.
+
 whereis_name(Pid) when is_pid(Pid) -> Pid;
 whereis_name(Name) when is_atom(Name) -> whereis(Name);
 whereis_name({global, Name}) -> global:whereis_name(Name);
 whereis_name(_) -> undefined.	
-	
+
 register_name(?BRICK_RPC_NONAME, _Pid) -> true;
 register_name({local, Name}, Pid) -> 
 	try register(Name, Pid)
@@ -74,7 +74,7 @@ register_name({global, Name}, Pid) ->
 		no -> false
 	end;
 register_name(_Name, _Pid) -> exit(badname).
-	
+
 unregister_name(?BRICK_RPC_NONAME) -> true;
 unregister_name({local, Name}) -> 
 	try unregister(Name)
@@ -94,7 +94,7 @@ pid(Process) ->
 		undefined -> exit(noproc);
 		Pid -> Pid
 	end.
-	
+
 send({global, Name}, Msg) ->
 	case global:whereis_name(Name) of
 		undefined -> ok;
