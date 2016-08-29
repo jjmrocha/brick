@@ -32,7 +32,7 @@
 	{stop, Reason :: term()} | 
 	ignore.
 
--callback handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) ->
+-callback handle_call(Request :: term(), State :: term()) ->
 	{reply, Reply :: term()} |
 	noreply |
 	{stop, Reason :: term(), Reply :: term()} |
@@ -108,7 +108,7 @@ init([Mod, Args, Options]) ->
 handle_call(Request, From, State=#state{queue=Pid, mod=Mod, data=Data}) ->
 	Server = self(),
 	brick_queue:push(Pid, fun() ->
-				try Mod:handle_call(Request, From, Data) of
+				try Mod:handle_call(Request, Data) of
 					{reply, Reply} -> gen_server:reply(From, Reply);
 					noreply -> ok;
 					{stop, Reason, Reply} ->
