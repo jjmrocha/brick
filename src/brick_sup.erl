@@ -45,7 +45,7 @@ init([]) ->
 	Optional = optional(),
 	
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
-	Procs = [Event, State, Clock, Cluster, Gossip, Service, Async] ++ Optional,
+	Procs = [Event, Clock, State, Cluster, Gossip, Service, Async] ++ Optional,
 	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================

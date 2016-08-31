@@ -18,8 +18,6 @@
 
 -behaviour(gen_server).
 
--define(SINGLETON(Name), {global, Name}).
-
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% ====================================================================
@@ -61,19 +59,21 @@
 -export([call/2, call/3, cast/2, send/2]).
 
 start_link(Name, Mod, Args) ->
+	validate_name(Name),
 	gen_server:start_link(?MODULE, [Name, Mod, Args], []).
 
 start(Name, Mod, Args) ->
+	validate_name(Name),
 	gen_server:start(?MODULE, [Name, Mod, Args], []).
 
 call(Name, Msg) -> 
-	gen_server:call(?SINGLETON(Name), Msg).
+	gen_server:call(Name, Msg).
 
 call(Name, Msg, Timeout) ->
-	gen_server:call(?SINGLETON(Name), Msg, Timeout).
+	gen_server:call(Name, Msg, Timeout).
 
 cast(Name, Msg) ->
-	gen_server:cast(?SINGLETON(Name), Msg).
+	gen_server:cast(Name, Msg).
 
 send(Name, Msg) ->
 	global:send(Name, Msg).
@@ -106,8 +106,8 @@ handle_cast(_Msg, State) ->
 
 %% handle_info/2
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}) ->
-	case global:register_name(Name, self()) of
-		yes ->
+	case brick_rpc:register_name(Name, self()) of
+		true ->
 			case Mod:init(Args) of
 				{ok, Data} -> {noreply, ?update_state(State, Data)};
 				{ok, Data, hibernate} -> {noreply, ?update_state(State, Data), hibernate};
@@ -116,8 +116,8 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 				ignore -> {stop, ignore, State};
 				Other -> Other
 			end;
-		no ->
-			case global:whereis_name(Name) of
+		false ->
+			case brick_rpc:whereis_name(Name) of
 				undefined -> {noreply, State, 0};
 				Pid -> 
 					MRef = erlang:monitor(process, Pid),
@@ -156,6 +156,10 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
+
+validate_name({global, _}) -> ok;
+validate_name({via, brick_global, _}) -> ok;
+validate_name(Name) -> exit({invalid_name, Name}).
 
 handle_reply({reply, Reply, Data}, State) -> {reply, Reply, ?update_state(State, Data)};
 handle_reply({reply, Reply, Data, hibernate}, State) -> {reply, Reply, ?update_state(State, Data), hibernate};

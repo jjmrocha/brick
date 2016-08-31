@@ -17,15 +17,20 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([version/0, cluster_name/0]).
+-export([version/0, cluster_name/0, cluster_name/1]).
 
 version() ->
 	{ok, Version} = application:get_key(brick, vsn),
 	list_to_binary(Version).
 
-cluster_name() ->	
+cluster_name() -> cluster_name(true).
+
+cluster_name(ToBin) ->	
 	Value = brick_config:get_env(cluster_name),
-	atom_to_binary(Value, utf8).
+	case ToBin of
+		true -> atom_to_binary(Value, utf8);
+		_ -> Value
+	end.
 
 %% ====================================================================
 %% Internal functions

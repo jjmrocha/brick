@@ -21,10 +21,8 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([name/1]).
 -export([transaction/2, transaction/3]).
-
-name(Id) -> ?CLUSTER_NAME(brick_system:cluster_name(), Id).
+-export([register_name/2, unregister_name/1, whereis_name/1, send/2]).
 
 transaction(Id, Function) -> transaction(Id, Function, infinity).
 
@@ -33,8 +31,20 @@ transaction(Id, Function, Retries) ->
 	Nodes = brick_cluster:online_nodes(),
 	global:trans(Name, Function, Nodes, Retries).
 
+register_name(Name, Pid) ->
+	global:register_name(name(Name), Pid).
+
+unregister_name(Name) ->
+	global:unregister_name(name(Name)).
+
+whereis_name(Name) ->
+	global:whereis_name(name(Name)).
+
+send(Name, Msg) ->
+	global:send(name(Name), Msg).
+
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
-
+name(Id) -> ?CLUSTER_NAME(brick_system:cluster_name(false), Id).

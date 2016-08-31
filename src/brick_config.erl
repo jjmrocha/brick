@@ -19,7 +19,11 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
+-export([peek_env/1]).
 -export([get_env/1, get_env/2]).
+-export([set_env/2]).
+
+peek_env(Param) -> application:get_env(brick, Param).
 
 get_env(Param) -> 
 	{ok, Value} = application:get_env(brick, Param),
@@ -28,6 +32,9 @@ get_env(Param) ->
 get_env(Param1, Param2) ->
 	Config = get_env(Param1),
 	get_value(Param2, Config).
+
+set_env(Param, Value) ->
+	application:set_env(brick, Param, Value).
 
 %% ====================================================================
 %% Internal functions
