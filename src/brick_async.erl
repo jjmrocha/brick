@@ -27,12 +27,17 @@
 %% API functions
 %% ====================================================================
 -export([start_link/0]).
--export([start_queue/1, stop_queue/1]).
+-export([start_queue/1, start_queue/2, stop_queue/1]).
 -export([run/1, run/2, run/3, run/4]).
 
-start_link() -> supervisor:start_link(?SERVER, ?MODULE, []).
+start_link() -> 
+	supervisor:start_link(?SERVER, ?MODULE, []).
 
-start_queue(JobQueue) -> supervisor:start_child(?MODULE, [{local, JobQueue}, [{hibernate, 5000}]]).
+start_queue(JobQueue) -> 
+	start_queue(JobQueue, [{hibernate, 5000}]).
+
+start_queue(JobQueue, Options) -> 
+	supervisor:start_child(?MODULE, [{local, JobQueue}, Options]).
 
 stop_queue(JobQueue) -> 
 	case whereis(JobQueue) of
@@ -42,7 +47,8 @@ stop_queue(JobQueue) ->
 			ok
 	end.
 
-run(Fun) when is_function(Fun, 0) -> run(?DEFAULT_JOB_QUEUE, Fun);
+run(Fun) when is_function(Fun, 0) -> 
+	run(?DEFAULT_JOB_QUEUE, Fun);
 run(_Fun) -> {error, invalid_function}.
 
 run(JobQueue, Fun) when is_atom(JobQueue), is_function(Fun, 0) ->
