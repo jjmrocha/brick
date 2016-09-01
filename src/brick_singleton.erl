@@ -106,7 +106,7 @@ handle_cast(_Msg, State) ->
 
 %% handle_info/2
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}) ->
-	case brick_rpc:register_name(Name, self()) of
+	case brick_util:register_name(Name, self()) of
 		true ->
 			case Mod:init(Args) of
 				{ok, Data} -> {noreply, ?update_state(State, Data)};
@@ -117,7 +117,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 				Other -> Other
 			end;
 		false ->
-			case brick_rpc:whereis_name(Name) of
+			case brick_util:whereis_name(Name) of
 				undefined -> {noreply, State, 0};
 				Pid -> 
 					MRef = erlang:monitor(process, Pid),
@@ -136,7 +136,8 @@ handle_info(_Info, State) ->
 	{noreply, State, hibernate}.
 
 %% terminate/2
-terminate(Reason, #state{mod=Mod, data=Data, singleton=none}) ->
+terminate(Reason, #state{name=Name, mod=Mod, data=Data, singleton=none}) ->
+	brick_util:unregister_name(Name),
 	Mod:terminate(Reason, Data);
 
 terminate(_Reason, #state{singleton=MRef}) ->

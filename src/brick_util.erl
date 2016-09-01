@@ -22,6 +22,7 @@
 -export([remove/2, common/2, not_in/2]).
 -export([random_get/2]).
 -export([shuffle/1]).
+-export([whereis_name/1, register_name/2, unregister_name/1]).
 
 remove([], List) -> List;
 remove([H|T], List) -> remove(T, lists:delete(H, List)).
@@ -46,6 +47,40 @@ random_get(List, Count) -> random_get(shuffle(List), Count, []).
 shuffle([]) -> [];
 shuffle([Element]) -> [Element];
 shuffle(List) -> [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- List])].
+
+whereis_name(Pid) when is_pid(Pid) -> Pid;
+whereis_name(Name) when is_atom(Name) -> whereis(Name);
+whereis_name({via, Mod, Name}) -> Mod:whereis_name(Name);
+whereis_name({global, Name}) -> global:whereis_name(Name);
+whereis_name(_) -> undefined.	
+
+register_name({local, Name}, Pid) -> 
+	try register(Name, Pid)
+	catch _:_ -> false
+	end;
+register_name({via, Mod, Name}, Pid) ->
+	case Mod:register_name(Name, Pid) of
+		yes -> true;
+		no -> false
+	end;
+register_name({global, Name}, Pid) ->
+	case global:register_name(Name, Pid) of
+		yes -> true;
+		no -> false
+	end;
+register_name(_Name, _Pid) -> exit(badname).
+
+unregister_name({local, Name}) -> 
+	try unregister(Name)
+	catch _:_ -> false
+	end;
+unregister_name({via, Mod, Name}) ->
+	Mod:unregister_name(Name),
+	true;
+unregister_name({global, Name}) ->
+	global:unregister_name(Name),
+	true;
+unregister_name(_Name) -> exit(badname).
 
 %% ====================================================================
 %% Internal functions
