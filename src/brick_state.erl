@@ -19,7 +19,6 @@
 -include("brick_event.hrl").
 
 -define(BRICK_CLUSTER_TOPOLOGY_STATE, '$brick_cluster_topology').
--define(STATE_TYPE(StateName), {?MODULE, StateName}).
 
 -behaviour(gen_server).
 
@@ -38,6 +37,12 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%% @doc
+%% Return cluster topology (list of cluster nodes)
+-spec read_topology_state() -> 
+		  {ok, Topology :: list(), Version :: term()} | 
+			  not_found |
+			  {error, Reason :: term()}.
 read_topology_state() ->
 	read_state(?BRICK_CLUSTER_TOPOLOGY_STATE).
 
@@ -201,17 +206,16 @@ write(StateName, StateValue, Version, Mod, Data) ->
 	end.
 
 send_event(StateName = ?BRICK_CLUSTER_TOPOLOGY_STATE, StateValue) ->
-	brick_event:publish(?STATE_TYPE(StateName), ?BRICK_CLUSTER_CHANGED_EVENT, StateValue);
+	brick_event:publish(StateName, ?BRICK_CLUSTER_CHANGED_EVENT, StateValue);
 send_event(StateName, StateValue) ->
-	brick_event:publish(?STATE_TYPE(StateName), ?BRICK_STATE_CHANGED_EVENT, StateValue).
+	brick_event:publish(StateName, ?BRICK_STATE_CHANGED_EVENT, StateValue).
 
 must_update(error, _) -> true;
 must_update({ok, OldVersion}, Version) -> brick_hlc:before(OldVersion, Version).
 
 subscribe(StateName, EventName) -> 
-	brick_event:subscribe(?STATE_TYPE(StateName), EventName, self()),
-	ok.
+	brick_event:subscribe(StateName, EventName, self()).
 
 unsubscribe(StateName, EventName) -> 
-	brick_event:unsubscribe(?STATE_TYPE(StateName), EventName, self()),
+	brick_event:unsubscribe(StateName, EventName, self()),
 	ok.

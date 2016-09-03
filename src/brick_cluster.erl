@@ -50,7 +50,7 @@ cluster_nodes() ->
 
 subscribe() -> 
 	lists:foreach(fun(EventName) ->  
-				subscribe(EventName) 
+				ok = subscribe(EventName) 
 		end, ?CLUSTER_EVENTS).
 
 unsubscribe() -> 
@@ -59,8 +59,7 @@ unsubscribe() ->
 		end, ?CLUSTER_EVENTS).
 
 subscribe(EventName) ->
-	brick_event:subscribe(?MODULE, EventName, self()),
-	ok.
+	brick_event:subscribe(?MODULE, EventName, self()).
 
 unsubscribe(EventName) ->
 	brick_event:unsubscribe(?MODULE, EventName, self()),

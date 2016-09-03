@@ -34,10 +34,13 @@ start_link() ->
 	gen_event:start_link({local, ?MODULE}).
 
 subscribe(Type, EventName, Subscriber) ->
-	gen_event:add_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), [Type, EventName, Subscriber]).
+	case gen_event:add_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), [Type, EventName, Subscriber]) of
+		ok -> ok;
+		Reason -> {error, Reason}
+	end.
 
 unsubscribe(Type, EventName, Subscriber) ->
-	gen_event:delete_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), []).
+	gen_event:delete_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), unsubscribe).
 
 publish(Type, EventName, Value) ->
 	Event = #brick_event{name=EventName, value=Value},
@@ -73,8 +76,11 @@ handle_info(_Info, State) ->
 	{ok, State}.
 
 %% terminate/2
-terminate(_Arg, #state{ref=MonitorRef}) ->
+terminate(unsubscribe, #state{ref=MonitorRef}) ->
 	erlang:demonitor(MonitorRef),
+	ok;
+
+terminate(_Args, _State) ->
 	ok.
 
 %% code_change/3
