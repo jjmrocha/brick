@@ -33,36 +33,36 @@ start_link() ->
 %% ====================================================================
 
 %% init/1
-init([]) ->
-	Event = #{id => brick_event, start => {brick_event, start_link, []}, restart => permanent, type => worker},
-	State = #{id => brick_state, start => {brick_state, start_link, []}, restart => permanent, type => worker},
-	Clock = #{id => brick_hlc, start => {brick_hlc, start_link, []}, restart => permanent, type => worker},
-	Cluster = #{id => brick_cluster, start => {brick_cluster, start_link, []}, restart => permanent, type => worker},
-	Gossip = #{id => brick_gossip, start => {brick_gossip, start_link, []}, restart => permanent, type => worker},
-	Service = #{id => brick_service, start => {brick_service, start_link, []}, restart => permanent, type => worker},
-	Async = #{id => brick_async, start => {brick_async, start_link, []}, restart => permanent, type => supervisor},
-	
-	Optional = optional(),
-	
+init([]) ->	
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
-	Procs = [Event, Clock, State, Cluster, Gossip, Service, Async] ++ Optional,
+	
+	Procs = [worker(brick_event), 
+			 worker(brick_hlc), 
+			 worker(brick_state), 
+			 worker(brick_cluster), 
+			 worker(brick_gossip), 
+			 worker(brick_service), 
+			 supervisor(brick_async)] ++ optional([]),
+	
 	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
-optional() ->
-	Optional1 = if_add(node_discovery_enable, true, fun() -> 
-					#{id => brick_cast,
-						start => {brick_cast, start_link, []},
-						restart => permanent,
-						type => worker}
-			end, []),
-	Optional1.
+child(Mod, Shutdown, Type) ->
+	#{id => Mod, start => {Mod, start_link, []}, restart => permanent, shutdown => Shutdown, type => Type}.
 
-if_add(Prop, Value, Fun, List) ->
-	case brick_config:get_env(Prop) of
-		Value -> [Fun()|List];
-		_ -> List
+worker(Mod) -> child(Mod, 2000, worker).
+
+supervisor(Mod) -> child(Mod, infinity, supervisor).
+
+optional(List) ->
+	List1 = brick_util:iif(test_prop(node_discovery_enable, true), [worker(brick_cast)|List], List),
+	List1.
+
+test_prop(PropName, Value) ->
+	case brick_config:get_env(PropName) of
+		Value -> true;
+		_ -> false
 	end.

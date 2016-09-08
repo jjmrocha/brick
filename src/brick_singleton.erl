@@ -89,7 +89,7 @@ init([Name, Mod, Args]) ->
 	{ok, #state{name=Name, mod=Mod, args=Args}, 0}.
 
 %% handle_call/3
-handle_call(Request, From, State=#state{mod=Mod, data=Data, singleton=none}) ->
+handle_call(Request, From, State=#state{mod=Mod, data=Data, singleton=my_self}) ->
 	Reply = Mod:handle_call(Request, From, Data),
 	handle_reply(Reply, State);
 
@@ -97,7 +97,7 @@ handle_call(_Request, _From, State) ->
 	{noreply, State, hibernate}.
 
 %% handle_cast/2
-handle_cast(Msg, State=#state{mod=Mod, data=Data, singleton=none}) ->
+handle_cast(Msg, State=#state{mod=Mod, data=Data, singleton=my_self}) ->
 	Reply = Mod:handle_cast(Msg, Data),
 	handle_reply(Reply, State);
 
@@ -109,9 +109,9 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 	case brick_util:register_name(Name, self()) of
 		true ->
 			case Mod:init(Args) of
-				{ok, Data} -> {noreply, ?update_state(State, Data)};
-				{ok, Data, hibernate} -> {noreply, ?update_state(State, Data), hibernate};
-				{ok, Data, Timeout} -> {noreply, ?update_state(State, Data), Timeout};
+				{ok, Data} -> {noreply, State#state{data=Data, singleton=my_self}};
+				{ok, Data, hibernate} -> {noreply, State#state{data=Data, singleton=my_self}, hibernate};
+				{ok, Data, Timeout} -> {noreply, State#state{data=Data, singleton=my_self}, Timeout};
 				{stop, Reason} -> {stop, Reason, State};
 				ignore -> {stop, ignore, State};
 				Other -> Other
@@ -128,7 +128,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, singleton=none}
 handle_info({'DOWN', MRef, _, _, _}, State=#state{singleton=MRef}) ->
 	{noreply, State#state{singleton=none}, 0};
 
-handle_info(Info, State=#state{mod=Mod, data=Data, singleton=none}) ->
+handle_info(Info, State=#state{mod=Mod, data=Data, singleton=my_self}) ->
 	Reply = Mod:handle_info(Info, Data),
 	handle_reply(Reply, State);
 
@@ -136,7 +136,7 @@ handle_info(_Info, State) ->
 	{noreply, State, hibernate}.
 
 %% terminate/2
-terminate(Reason, #state{name=Name, mod=Mod, data=Data, singleton=none}) ->
+terminate(Reason, #state{name=Name, mod=Mod, data=Data, singleton=my_self}) ->
 	brick_util:unregister_name(Name),
 	Mod:terminate(Reason, Data);
 
@@ -145,7 +145,7 @@ terminate(_Reason, #state{singleton=MRef}) ->
 	ok.
 
 %% code_change/3
-code_change(OldVsn, State=#state{mod=Mod, data=Data, singleton=none}, Extra) ->
+code_change(OldVsn, State=#state{mod=Mod, data=Data, singleton=my_self}, Extra) ->
 	case Mod:code_change(OldVsn, Data, Extra) of
 		{ok, NewData} -> {ok, ?update_state(State, NewData)};
 		{error, Reason} -> {error, Reason}

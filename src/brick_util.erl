@@ -23,6 +23,7 @@
 -export([random_get/2]).
 -export([shuffle/1]).
 -export([whereis_name/1, register_name/2, unregister_name/1]).
+-export([iif/3]).
 
 remove([], List) -> List;
 remove([H|T], List) -> remove(T, lists:delete(H, List)).
@@ -81,6 +82,12 @@ unregister_name({global, Name}) ->
 	global:unregister_name(Name),
 	true;
 unregister_name(_Name) -> exit(badname).
+
+iif(true, Fun, _Else) when is_function(Fun, 0) -> Fun();
+iif(true, TrueValue, _Else) -> TrueValue;
+iif(false, _If, Fun) when is_function(Fun, 0) -> Fun();
+iif(false, _If, FalseValue) -> FalseValue;
+iif(_, _, _) -> throw(invalid_arg).
 
 %% ====================================================================
 %% Internal functions

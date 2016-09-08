@@ -35,6 +35,7 @@
 	{mod, {brick_app, []}},
 	{env, [
 		{cluster_name, brick},
+		{ha_slave_max, 2},
 		{storage_handler, brick_stg_memory},
 		{storage_handler_config, [
 			% For brick_stg_file
