@@ -80,7 +80,7 @@ cast(Name, Msg) ->
 	gen_server:cast(Name, Msg).
 
 send(Name, Msg) ->
-	global:send(Name, Msg).
+	brick_util:send(Name, Msg).
 
 %% ====================================================================
 %% Behavioural functions
