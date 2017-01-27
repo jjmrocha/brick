@@ -1,5 +1,5 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
 %% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ cast(Name, Msg) ->
 	gen_server:cast(Name, Msg).
 
 send(Name, Msg) ->
-	global:send(Name, Msg).
+	brick_util:send(Name, Msg).
 
 %% ====================================================================
 %% Behavioural functions
