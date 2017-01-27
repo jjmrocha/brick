@@ -28,7 +28,7 @@
 init(_Args) -> {ok, []}. 
 
 states(State) -> 
-	StateList = lists:map(fun(?STATE_ITEM(Name, Version, _)) -> {Name, Version} end, State),
+	StateList = [ Name || ?STATE_ITEM(Name, _, _) <- State ],
 	{ok, StateList, State}.
 
 read(Name, State) ->
