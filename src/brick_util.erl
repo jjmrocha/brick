@@ -1,5 +1,5 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
 %% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 -export([remove/2, common/2, not_in/2]).
 -export([random_get/2]).
 -export([shuffle/1]).
--export([whereis_name/1, register_name/2, unregister_name/1]).
+-export([whereis_name/1, register_name/2, unregister_name/1, send/2]).
 -export([iif/3]).
 
 remove([], List) -> List;
@@ -50,9 +50,9 @@ shuffle([Element]) -> [Element];
 shuffle(List) -> [X || {_, X} <- lists:sort([{rand:uniform(), N} || N <- List])].
 
 whereis_name(Pid) when is_pid(Pid) -> Pid;
-whereis_name(Name) when is_atom(Name) -> whereis(Name);
 whereis_name({via, Mod, Name}) -> Mod:whereis_name(Name);
 whereis_name({global, Name}) -> global:whereis_name(Name);
+whereis_name(Name) when is_atom(Name) -> whereis(Name);
 whereis_name(_) -> undefined.	
 
 register_name({local, Name}, Pid) -> 
@@ -82,6 +82,16 @@ unregister_name({global, Name}) ->
 	global:unregister_name(Name),
 	true;
 unregister_name(_Name) -> exit(badname).
+
+send(Pid, Msg) when is_pid(Pid) -> Pid ! Msg;
+send({via, Mod, Name}, Msg) -> Mod:send(Name, Msg);
+send({global, Name}, Msg) -> global:send(Name, Msg);
+send(Name, Msg) when is_atom(Name) -> 
+	case whereis(Name) of
+		undefined -> exit({badarg, {Name, Msg}});
+		Pid -> Pid ! Msg
+	end;
+send(Name, Msg) -> exit({badarg, {Name, Msg}}).	
 
 iif(true, Fun, _Else) when is_function(Fun, 0) -> Fun();
 iif(true, TrueValue, _Else) -> TrueValue;
