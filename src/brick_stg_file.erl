@@ -1,5 +1,5 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
 %% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -25,46 +25,42 @@
 %% API functions
 %% ====================================================================
 
+-record(state, {file_name, data}).
+
 init(Args) ->
 	case lists:keyfind(file_name, 1, Args) of
 		false -> 
 			error_logger:error_msg("~p: No value for parameter ~p\n", [?MODULE, file_name]),
 			{stop, invalid_configuration};
-		{_, FileName} -> {ok, FileName}
+		{_, FileName} -> 
+			case read_file(FileName) of
+				{ok, Data} -> 
+					State = #state{file_name=FileName, data=Data},
+					{ok, State}		
+				{error, Reason} -> {stop, Reason}
+			end		
 	end. 
 
-states(FileName) -> 
-	case read_file(FileName) of
-		{ok, Data} -> 
-			StateList = [ Name || ?STATE_ITEM(Name, _, _) <- Data ],
-			{ok, StateList, FileName};		
-		{error, Reason} -> {stop, Reason, FileName}
+states(State = #state{data=Data}) -> 
+	StateList = [ Name || ?STATE_ITEM(Name, _, _) <- Data ],
+	{ok, StateList, State}.
+
+read(Name, State = #state{data=Data}) ->
+	case lists:keyfind(Name, 1, Data) of
+		false -> {not_found, State};
+		?STATE_ITEM(_, Version, Value) -> {ok, Value, Version, State}
 	end.
 
-read(Name, FileName) ->
-	case read_file(FileName) of
-		{ok, Data} -> 
-			case lists:keyfind(Name, 1, Data) of
-				false -> {not_found, FileName};
-				?STATE_ITEM(_, Version, Value) -> {ok, Value, Version, FileName}
-			end;			
-		{error, Reason} -> {stop, Reason, FileName}
+write(Name, Value, Version, State = #state{file_name=FileName, data=Data) -> 
+	NewData = lists:keystore(Name, 1, Data, ?STATE_ITEM(Name, Version, Value)),
+	case write_file(FileName, NewData) of
+		ok -> {ok, State#{data=NewData}};
+		{error, Reason} -> {stop, Reason, State}
 	end.
 
-write(Name, Value, Version, FileName) -> 
-	case read_file(FileName) of
-		{ok, Data} -> 
-			NewData = lists:keystore(Name, 1, Data, ?STATE_ITEM(Name, Version, Value)),
-			case write_file(FileName, NewData) of
-				ok -> {ok, FileName};
-				{error, Reason} -> {stop, Reason, FileName}
-			end;
-		{error, Reason} -> {stop, Reason, FileName}
-	end.	
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-code_change(_OldVsn, FileName, _Extra) -> {ok, FileName}.
-
-terminate(_FileName) -> ok.
+terminate(_State) -> ok.
 
 %% ====================================================================
 %% Internal functions
