@@ -1,6 +1,6 @@
 %%
 %% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -29,19 +29,19 @@
 
 init(Args) ->
 	case lists:keyfind(file_name, 1, Args) of
-		false -> 
+		false ->
 			error_logger:error_msg("~p: No value for parameter ~p\n", [?MODULE, file_name]),
 			{stop, invalid_configuration};
-		{_, FileName} -> 
+		{_, FileName} ->
 			case read_file(FileName) of
-				{ok, Data} -> 
+				{ok, Data} ->
 					State = #state{file_name=FileName, data=Data},
-					{ok, State}		
+					{ok, State};
 				{error, Reason} -> {stop, Reason}
-			end		
-	end. 
+			end
+	end.
 
-states(State = #state{data=Data}) -> 
+states(State = #state{data=Data}) ->
 	StateList = [ Name || ?STATE_ITEM(Name, _, _) <- Data ],
 	{ok, StateList, State}.
 
@@ -51,10 +51,10 @@ read(Name, State = #state{data=Data}) ->
 		?STATE_ITEM(_, Version, Value) -> {ok, Value, Version, State}
 	end.
 
-write(Name, Value, Version, State = #state{file_name=FileName, data=Data) -> 
+write(Name, Value, Version, State = #state{file_name=FileName, data=Data}) ->
 	NewData = lists:keystore(Name, 1, Data, ?STATE_ITEM(Name, Version, Value)),
 	case write_file(FileName, NewData) of
-		ok -> {ok, State#{data=NewData}};
+		ok -> {ok, State#state{data=NewData}};
 		{error, Reason} -> {stop, Reason, State}
 	end.
 
@@ -75,4 +75,3 @@ write_file(FileName, Data) ->
 			file:close(H);
 		{error, Reason} -> {error, Reason}
 	end.
-

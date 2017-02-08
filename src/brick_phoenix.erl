@@ -16,7 +16,7 @@
 
 -module(brick_phoenix).
 
--behaviour(gen_event).
+-behaviour(gen_server).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 %% ====================================================================
@@ -24,8 +24,10 @@
 %% ====================================================================
 
 -callback init(Args :: term()) ->
-	{ok, State :: term()} | {ok, State :: term(), timeout() | hibernate} |
-	{stop, Reason :: term()} | ignore.
+	{ok, State :: term()} |
+	{ok, State :: term(), timeout() | hibernate} |
+	{stop, Reason :: term()} |
+	ignore.
 
 -callback handle_call(Request :: term(), From :: {pid(), Tag :: term()}, State :: term()) ->
 	{reply, Reply :: term(), NewState :: term()} |
@@ -49,12 +51,20 @@
 	term().
 
 -callback code_change(OldVsn :: (term() | {down, term()}), State :: term(), Extra :: term()) ->
-	{ok, NewState :: term()} | {error, Reason :: term()}.
+	{ok, NewState :: term()} |
+	{error, Reason :: term()}.
 
 -callback reborn(State :: term()) ->
-	{ok, NewState :: term()} | {error, Reason :: term()}.
+	{ok, NewState :: term()} |
+	{ok, NewState :: term(), timeout() | hibernate} |
+	{stop, Reason :: term()}.
 
--optional_callbacks([reborn/1]).
+-callback handle_state_update(State :: term()) ->
+	{ok, NewState :: term()} |
+	{ok, NewState :: term(), timeout() | hibernate} |
+	{stop, Reason :: term()}.
+
+-optional_callbacks([handle_state_update/1]).
 
 %% ====================================================================
 %% API functions
@@ -90,12 +100,17 @@ send(Name, Msg) ->
 -define(STATUS_SLAVE, $s).
 -define(STATUS_IDLE, $i).
 
--record(state, {name, mod, args, data, status=?STATUS_IDLE, slave_list=[], mon=dict:new()}).
+-define(STATUS_UPDATE_QUEUE, '$brick_phoenix_async_queue').
+-define(UPDATE_MSG(Data, Timestamp), {'$brick_phoenix_update_data', Data, Timestamp}).
+-define(WELCOME_MSG(Pid, Timestamp), {'$brick_phoenix_welcome', Pid, Timestamp}).
+
+-record(state, {name, mod, args, data, status=?STATUS_IDLE, slave_list=[], mon=dict:new(), update_handler}).
 
 %% init/1
 init([Name, Mod, Args]) ->
 	Timeout = timeout(Name),
-	{ok, #state{name=Name, mod=Mod, args=Args}, Timeout}.
+	UseUpdateHandler = erlang:function_exported(Mod, handle_state_update, 1),
+	{ok, #state{name=Name, mod=Mod, args=Args, update_handler=UseUpdateHandler}, Timeout}.
 
 %% handle_call/3
 handle_call(Request, From, State=#state{mod=Mod, data=Data, status=?STATUS_MASTER}) ->
@@ -109,7 +124,9 @@ handle_call(_Request, _From, State) ->
 	{noreply, State, hibernate}.
 
 %% handle_cast/2
-handle_cast({$welcome, Pid}, State=#state{data=Data, status=?STATUS_MASTER}) ->
+handle_cast(?WELCOME_MSG(Pid, Timestamp), State=#state{data=Data, status=?STATUS_MASTER}) ->
+	NewTimestamp = brick_hlc:update(Timestamp),
+	gen_server:cast(Pid, ?UPDATE_MSG(Data, NewTimestamp)),
 	State1 = #state{slave_list=SlaveList} = monitor_pid(State, Pid),
 	SlaveList1 = brick_util:iif(lists:member(Pid, SlaveList), SlaveList, [Pid|SlaveList]),
 	{noreply, State1#state{slave_list=SlaveList1}};
@@ -118,7 +135,17 @@ handle_cast(Msg, State=#state{mod=Mod, data=Data, status=?STATUS_MASTER}) ->
 	Reply = Mod:handle_cast(Msg, Data),
 	handle_reply(Reply, State);
 
-handle_cast({$update_data, Data}, State=#state{status=?STATUS_SLAVE}) ->
+handle_cast(?UPDATE_MSG(Data, Timestamp), State=#state{mod=Mod, status=?STATUS_SLAVE, update_handler=true}) ->
+	brick_hlc:update(Timestamp),
+	case Mod:handle_state_update(Data) of
+		{ok, NewData} -> {noreply, State#state{data=NewData}};
+		{ok, NewData, hibernate} -> {noreply, State#state{data=NewData}, hibernate};
+		{ok, NewData, Timeout} -> {noreply, State#state{data=NewData}, Timeout};
+		{stop, Reason} -> {stop, Reason, State}
+	end;
+
+handle_cast(?UPDATE_MSG(Data, Timestamp), State=#state{status=?STATUS_SLAVE}) ->
+	brick_hlc:update(Timestamp),
 	{noreply, State#state{data=Data}};
 
 handle_cast(_Msg, State=#state{status=?STATUS_SLAVE}) ->
@@ -148,22 +175,30 @@ handle_info({'DOWN', MRef, _, _, _}, State=#state{status=?STATUS_SLAVE}) ->
 		{_, State1} -> {noreply, State1, 0}
 	end;
 
-handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args}) ->
-	case brick_util:register_name(Name, self()) of
-		true ->
+handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, status=Status, data=Data}) ->
+	case {brick_util:register_name(Name, self()), Status} of
+		{true, ?STATUS_IDLE} ->
 			case Mod:init(Args) of
-				{ok, Data} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, Data)};
-				{ok, Data, hibernate} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, Data), hibernate};
-				{ok, Data, Timeout} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, Data), Timeout};
+				{ok, NewData} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData)};
+				{ok, NewData, hibernate} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData), hibernate};
+				{ok, NewData, Timeout} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData), Timeout};
 				{stop, Reason} -> {stop, Reason, State};
 				ignore -> {stop, ignore, State};
 				Other -> Other
 			end;
-		false ->
+		{true, _} ->
+			case Mod:reborn(Data) of
+				{ok, NewData} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData)};
+				{ok, NewData, hibernate} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData), hibernate};
+				{ok, NewData, Timeout} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData), Timeout};
+				{stop, Reason} -> {stop, Reason, State};
+				Other -> Other
+			end;
+		{false, _} ->
 			case brick_util:whereis_name(Name) of
 				undefined -> {noreply, State, 0};
 				Pid ->
-					gen_server:cast(Pid, {$welcome, self()}),
+					gen_server:cast(Pid, ?WELCOME_MSG(self(), brick_hlc:timestamp())),
 					{noreply, monitor_pid(State#state{status=?STATUS_SLAVE}, Pid)}
 			end
 	end;
@@ -194,16 +229,16 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
+validate_name({global, _}) -> ok;
+validate_name({via, brick_global, _}) -> ok;
+validate_name(Name) -> exit({invalid_name, Name}).
+
 timeout({global, _}) -> timeout_by_custer_size(nodes());
 timeout({via, brick_global, _}) -> timeout_by_custer_size(brick_cluster:online_nodes()).
 
 timeout_by_custer_size([]) -> 0;
 timeout_by_custer_size([_]) -> 0;
-timeout_by_custer_size(_) -> 1000;
-
-validate_name({global, _}) -> ok;
-validate_name({via, brick_global, _}) -> ok;
-validate_name(Name) -> exit({invalid_name, Name}).
+timeout_by_custer_size(_) -> 1000.
 
 handle_reply({reply, Reply, Data}, State) -> {reply, Reply, update_state(State, Data)};
 handle_reply({reply, Reply, Data, hibernate}, State) -> {reply, Reply, update_state(State, Data), hibernate};
@@ -216,13 +251,15 @@ handle_reply({stop, Reason, Data}, State) -> {stop, Reason, update_state(State, 
 handle_reply(Other, _State) -> Other.
 
 update_state(State, Data) when State#state.data =/= Data ->
-	publish(State#state.slave_list, Data),
+	brick_async:run(?STATUS_UPDATE_QUEUE, fun() ->
+			publish(State#state.slave_list, Data)
+		end),
 	State#state{data=Data};
 update_state(State, _Data) -> State.
 
 publish([], _Data) -> ok;
 publish([Pid|T], Data) ->
-	gen_server:cast(Pid, {$update_data, Data}),
+	gen_server:cast(Pid, ?UPDATE_MSG(Data, brick_hlc:timestamp())),
 	publish(T, Data).
 
 monitor_pid(State=#state{mon=Mon}, Pid) ->
