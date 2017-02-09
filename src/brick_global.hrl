@@ -16,5 +16,5 @@
 
 -define(CLUSTER_NAME(Cluster, Id), {'$brick', Cluster, Id}).
 
--define(RESOLVE_REQUEST(Pid), {'$brick_resolve_request', Pid}).
--define(RESOLVE_RESPONSE(Pid, Timestamp), {'$brick_resolve_response', Pid, Timestamp}).
+-define(RESOLVE_REQUEST(From, Ref), {'$brick_resolve_request', From, Ref}).
+-define(RESOLVE_RESPONSE(Ref, Timestamp), {'$brick_resolve_response', Ref, Timestamp}).
