@@ -22,7 +22,7 @@
 -export([remove/2, common/2, not_in/2]).
 -export([random_get/2]).
 -export([shuffle/1]).
--export([whereis_name/1, register_name/2, unregister_name/1, send/2]).
+-export([whereis_name/1, register_name/2, register_name/3, unregister_name/1, send/2]).
 -export([iif/3]).
 
 remove([], List) -> List;
@@ -54,6 +54,19 @@ whereis_name({via, Mod, Name}) -> Mod:whereis_name(Name);
 whereis_name({global, Name}) -> global:whereis_name(Name);
 whereis_name(Name) when is_atom(Name) -> whereis(Name);
 whereis_name(_) -> undefined.	
+
+register_name(Name = {local, Name}, Pid, _) -> register_name(Name, Pid);
+register_name({{via, brick_global, Name}, Pid, Resolver) ->
+	case brick_global:register_name(Name, Pid, Resolver) of
+		yes -> true;
+		no -> false
+	end;
+register_name({global, Name}, Pid, Resolver) ->
+	case global:register_name(Name, Pid, Resolver) of
+		yes -> true;
+		no -> false
+	end;
+register_name(_Name, _Pid, _Resolver) -> exit(not_supported).
 
 register_name({local, Name}, Pid) -> 
 	try register(Name, Pid)
