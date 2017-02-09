@@ -22,7 +22,7 @@
 %% API functions
 %% ====================================================================
 -export([transaction/2, transaction/3]).
--export([register_name/2, unregister_name/1, whereis_name/1, send/2]).
+-export([register_name/2, register_name/3, unregister_name/1, whereis_name/1, send/2]).
 
 transaction(Id, Function) -> transaction(Id, Function, infinity).
 
@@ -33,6 +33,9 @@ transaction(Id, Function, Retries) ->
 
 register_name(Name, Pid) ->
 	global:register_name(name(Name), Pid).
+
+register_name(Name, Pid, Resolver) ->
+	global:register_name(name(Name), Pid, Resolver).
 
 unregister_name(Name) ->
 	global:unregister_name(name(Name)).
