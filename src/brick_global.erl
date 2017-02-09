@@ -16,7 +16,7 @@
 
 -module(brick_global).
 
--define(CLUSTER_NAME(Cluster, Id), {'$brick', Cluster, Id}).
+-include("brick_global.hrl").
 
 %% ====================================================================
 %% API functions
@@ -48,10 +48,32 @@ send(Name, Msg) ->
 	global:send(name(Name), Msg).
 
 resolver(Name, Pid1, Pid2) ->
-	global:random_exit_name(Name, Pid1, Pid2).
+	case {pid_timestamp(Pid1), pid_timestamp(Pid2)} of
+		{down, down} -> none;
+		{down, _} -> Pid2;
+		{_, down} -> Pid1;
+		{none, _} -> Pid2;
+		{_, none} -> Pid1;
+		{TS1, TS2} -> 
+			if 
+				brick_hlc:before(TS1, TS2) -> Pid1;
+				true -> Pid2
+			end
+	end.
 
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
 
 name(Id) -> ?CLUSTER_NAME(brick_system:cluster_name(false), Id).
+
+pid_timestamp(Pid) ->
+	MRef = erlang:monitor(process, Pid),
+	Pid ! ?RESOLVE_REQUEST(self(), MRef),
+	receive
+		?RESOLVE_RESPONSE(MRef, Timestamp) ->
+			erlang:demonitor(MRef, [flush]),
+			Timestamp;
+		{'DOWN', MRef, _, _, Reason} ->
+			down
+	end.	
