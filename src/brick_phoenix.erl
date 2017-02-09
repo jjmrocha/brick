@@ -176,7 +176,7 @@ handle_info({'DOWN', MRef, _, _, _}, State=#state{status=?STATUS_SLAVE}) ->
 	end;
 
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, status=Status, data=Data}) ->
-	case {brick_util:register_name(Name, self()), Status} of
+	case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Status} of
 		{true, ?STATUS_IDLE} ->
 			case Mod:init(Args) of
 				{ok, NewData} -> {noreply, update_state(State#state{status=?STATUS_MASTER}, NewData)};
