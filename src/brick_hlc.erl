@@ -1,5 +1,5 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
 %% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 -module(brick_hlc).
 
--define(FRACTIONS_OF_SECOND, 10000).
 -record(hlc, {l, c}).
 -define(hlc_timestamp(Logical, Counter), #hlc{l = Logical, c = Counter}).
 
@@ -120,11 +119,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
-wall_clock() ->
-	{MegaSecs, Secs, Micro} = os:timestamp(),
-	Seconds = (MegaSecs * 1000000) + Secs,
-	Fraction = Micro div 100,
-	(Seconds * ?FRACTIONS_OF_SECOND) + Fraction.
+wall_clock() -> os:system_time(microsecond).
 
 current_timestamp() -> ?hlc_timestamp(wall_clock(), 0).
 
