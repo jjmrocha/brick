@@ -47,7 +47,7 @@ decode(Time) ->
 	?hlc_timestamp(Logical, Counter).
 
 add_seconds(?hlc_timestamp(Logical, Counter), Seconds) ->
-	MS = Seconds * ?FRACTIONS_OF_SECOND,
+	MS = Seconds * 1000,
 	?hlc_timestamp(Logical + MS, Counter).
 
 update(ExternalTime) -> gen_server:call(?MODULE, {update, ExternalTime}).
@@ -119,7 +119,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
-wall_clock() -> os:system_time(microsecond).
+wall_clock() -> erlang:convert_time_unit(os:system_time(), native, 1000).
 
 current_timestamp() -> ?hlc_timestamp(wall_clock(), 0).
 
