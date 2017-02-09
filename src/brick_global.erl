@@ -1,5 +1,5 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
 %% 
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 %% ====================================================================
 -export([transaction/2, transaction/3]).
 -export([register_name/2, register_name/3, unregister_name/1, whereis_name/1, send/2]).
+-export([resolver/3]).
 
 transaction(Id, Function) -> transaction(Id, Function, infinity).
 
@@ -45,6 +46,9 @@ whereis_name(Name) ->
 
 send(Name, Msg) ->
 	global:send(name(Name), Msg).
+
+resolver(Name, Pid1, Pid2) ->
+	global:random_exit_name(Name, Pid1, Pid2).
 
 %% ====================================================================
 %% Internal functions
