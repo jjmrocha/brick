@@ -104,15 +104,26 @@ send(Name, Msg) ->
 
 -define(STATUS_UPDATE_QUEUE, '$brick_phoenix_async_queue').
 -define(UPDATE_MSG(Data, Timestamp), {'$brick_phoenix_update_data', Data, Timestamp}).
--define(WELCOME_MSG(Pid, Timestamp), {'$brick_phoenix_welcome', Pid, Timestamp}).
+-define(WELCOME_MSG(From), {'$brick_phoenix_welcome', From}).
 
--record(state, {name, mod, args, data, ts=none, status=?STATUS_IDLE, slave_list=[], mon=dict:new(), update_handler}).
+-record(state, {name, 
+		mod, 
+		args, 
+		data, 
+		ts=none, 
+		status=?STATUS_IDLE, 
+		slave_list=[], 
+		mon=dict:new(), 
+		update_handler}).
 
 %% init/1
 init([Name, Mod, Args]) ->
-	UseUpdateHandler = erlang:function_exported(Mod, handle_state_update, 1),
+	State = #state{name=Name, 
+		       mod=Mod, 
+		       args=Args, 
+		       update_handler=erlang:function_exported(Mod, handle_state_update, 1)},
 	Timeout = timeout(Name),
-	{ok, #state{name=Name, mod=Mod, args=Args, update_handler=UseUpdateHandler}, Timeout}.
+	{ok, State, Timeout}.
 
 %% handle_call/3
 handle_call(Request, From, State=#state{mod=Mod, data=Data, ts=TS, status=?STATUS_MASTER}) ->
@@ -126,11 +137,10 @@ handle_call(_Request, _From, State) ->
 	{noreply, State, hibernate}.
 
 %% handle_cast/2
-handle_cast(?WELCOME_MSG(Pid, Timestamp), State=#state{data=Data, ts=TS, status=?STATUS_MASTER}) ->
-	brick_hlc:update(Timestamp),
-	gen_server:cast(Pid, ?UPDATE_MSG(Data, TS)),
-	State1 = #state{slave_list=SlaveList} = monitor_pid(State, Pid),
-	SlaveList1 = brick_util:iif(lists:member(Pid, SlaveList), SlaveList, [Pid|SlaveList]),
+handle_cast(?WELCOME_MSG(From), State=#state{data=Data, ts=TS, status=?STATUS_MASTER}) ->
+	gen_server:cast(From, ?UPDATE_MSG(Data, TS)),
+	State1 = #state{slave_list=SlaveList} = monitor_pid(State, From),
+	SlaveList1 = brick_util:iif(lists:member(From, SlaveList), SlaveList, [From|SlaveList]),
 	{noreply, State1#state{slave_list=SlaveList1}};
 
 handle_cast(Msg, State=#state{mod=Mod, data=Data, ts=TS, status=?STATUS_MASTER}) ->
@@ -204,7 +214,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, status=Status, 
 			case brick_util:whereis_name(Name) of
 				undefined -> {noreply, State, 0};
 				Pid ->
-					gen_server:cast(Pid, ?WELCOME_MSG(self(), brick_hlc:timestamp())),
+					gen_server:cast(Pid, ?WELCOME_MSG(self())),
 					{noreply, monitor_pid(State#state{status=?STATUS_SLAVE}, Pid)}
 			end
 	end;
@@ -215,8 +225,8 @@ handle_info(_Info, State) ->
 %% terminate/2
 terminate(Reason, State=#state{name=Name, mod=Mod, data=Data, ts=TS, status=?STATUS_MASTER}) ->
 	demonitor_pids(State),
-	brick_util:unregister_name(Name),
-	Mod:terminate(Reason, Data, TS);
+	Mod:terminate(Reason, Data, TS),
+	brick_util:unregister_name(Name);
 
 terminate(_Reason, State) ->
 	demonitor_pids(State).
