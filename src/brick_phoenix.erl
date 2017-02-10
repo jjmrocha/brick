@@ -257,11 +257,16 @@ handle_reply({stop, Reason, Data, TS}, State) -> {stop, Reason, update_state(Sta
 handle_reply(Other, _State) -> Other.
 
 update_state(State, Data, TS) when State#state.data =/= Data orelse State#state.ts =/= TS ->
-	brick_async:run(?STATUS_UPDATE_QUEUE, fun() ->
-			publish(State#state.slave_list, Data, TS)
-		end),
+	uppdate_slaves(State, Data, TS),
 	State#state{data=Data, ts=TS};
 update_state(State, _Data, _TS) -> State.
+
+uppdate_slaves(#state{slave_list=[]}, _Data, _TS) -> ok;
+uppdate_slaves(State = #state{slave_list=Pids}, Data, TS) when State#state.ts =/= TS ->
+	brick_async:run(?STATUS_UPDATE_QUEUE, fun() ->
+			publish(Pids, Data, TS)
+		end);
+uppdate_slaves(_State, _Data, _TS) -> ok.
 
 publish([], _Data, _TS) -> ok;
 publish([Pid|T], Data, TS) ->
