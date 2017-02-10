@@ -1,6 +1,6 @@
 %%
 %% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -17,6 +17,9 @@
 -module(brick_hlc).
 
 -record(hlc, {l, c}).
+-type timestamp() :: #hlc{}.
+-export_type([timestamp/0]).
+
 -define(hlc_timestamp(Logical, Counter), #hlc{l = Logical, c = Counter}).
 
 -behaviour(gen_server).

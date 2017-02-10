@@ -1,6 +1,6 @@
 %%
 %% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -47,17 +47,17 @@ whereis_name(Name) ->
 send(Name, Msg) ->
 	global:send(name(Name), Msg).
 
-resolver(Name, Pid1, Pid2) ->
+resolver(_Name, Pid1, Pid2) ->
 	case {pid_timestamp(Pid1), pid_timestamp(Pid2)} of
 		{down, down} -> none;
 		{down, _} -> Pid2;
 		{_, down} -> Pid1;
 		{none, _} -> Pid2;
 		{_, none} -> Pid1;
-		{TS1, TS2} -> 
-			if 
-				brick_hlc:before(TS1, TS2) -> Pid1;
-				true -> Pid2
+		{TS1, TS2} ->
+			case brick_hlc:before(TS1, TS2) of
+				true -> Pid1;
+				_ -> Pid2
 			end
 	end.
 
@@ -74,6 +74,6 @@ pid_timestamp(Pid) ->
 		?RESOLVE_RESPONSE(MRef, Timestamp) ->
 			erlang:demonitor(MRef, [flush]),
 			Timestamp;
-		{'DOWN', MRef, _, _, Reason} ->
+		{'DOWN', MRef, _, _, _} ->
 			down
-	end.	
+	end.
