@@ -72,21 +72,29 @@
 %% API functions
 %% ====================================================================
 -export([start_link/3, start/3]).
--export([call/2, call/3, cast/2, send/2]).
+-export([call_master/2, call_master/3, call_local/2, call_local/3, cast/2, send/2]).
 
 start_link(Name, Mod, Args) ->
 	validate_name(Name),
-	gen_server:start_link(?MODULE, [Name, Mod, Args], []).
+	LocalName = local_name(Name),
+	gen_server:start_link({local, LocalName}, ?MODULE, [Name, Mod, Args], []).
 
 start(Name, Mod, Args) ->
 	validate_name(Name),
-	gen_server:start(?MODULE, [Name, Mod, Args], []).
+	LocalName = local_name(Name),
+	gen_server:start({local, LocalName}, ?MODULE, [Name, Mod, Args], []).
 
-call(Name, Msg) ->
+call_master(Name, Msg) ->
 	gen_server:call(Name, Msg).
 
-call(Name, Msg, Timeout) ->
+call_master(Name, Msg, Timeout) ->
 	gen_server:call(Name, Msg, Timeout).
+
+call_local(Name, Msg) ->
+	gen_server:call(local_name(Name), Msg).
+
+call_local(Name, Msg, Timeout) ->
+	gen_server:call(local_name(Name), Msg, Timeout).
 
 cast(Name, Msg) ->
 	gen_server:cast(Name, Msg).
@@ -106,21 +114,21 @@ send(Name, Msg) ->
 -define(UPDATE_MSG(Data, Timestamp), {'$brick_phoenix_update_data', Data, Timestamp}).
 -define(WELCOME_MSG(From), {'$brick_phoenix_welcome', From}).
 
--record(state, {name, 
-		mod, 
-		args, 
-		data, 
-		ts=none, 
-		status=?STATUS_IDLE, 
-		slave_list=[], 
-		mon=dict:new(), 
+-record(state, {name,
+		mod,
+		args,
+		data,
+		ts=none,
+		status=?STATUS_IDLE,
+		slave_list=[],
+		mon=dict:new(),
 		update_handler}).
 
 %% init/1
 init([Name, Mod, Args]) ->
-	State = #state{name=Name, 
-		       mod=Mod, 
-		       args=Args, 
+	State = #state{name=Name,
+		       mod=Mod,
+		       args=Args,
 		       update_handler=erlang:function_exported(Mod, handle_state_update, 1)},
 	Timeout = timeout(Name),
 	{ok, State, Timeout}.
@@ -130,8 +138,9 @@ handle_call(Request, From, State=#state{mod=Mod, data=Data, ts=TS, status=?STATU
 	Reply = Mod:handle_call(Request, From, Data, TS),
 	handle_reply(Reply, State);
 
-handle_call(_Request, _From, State=#state{status=?STATUS_SLAVE}) ->
-	{noreply, State};
+handle_call(Request, From, State=#state{mod=Mod, data=Data, ts=TS, status=?STATUS_SLAVE}) ->
+	Reply = Mod:handle_call(Request, From, Data, TS),
+	handle_reply(Reply, State);
 
 handle_call(_Request, _From, State) ->
 	{noreply, State, hibernate}.
@@ -249,6 +258,11 @@ validate_name({global, _}) -> ok;
 validate_name({via, brick_global, _}) -> ok;
 validate_name(Name) -> exit({invalid_name, Name}).
 
+local_name({global, Name}) -> Name;
+local_name({via, brick_global, Name}) -> Name;
+local_name(Name) when is_atom(Name) -> Name;
+local_name(Name) -> exit({invalid_name, Name}).
+
 timeout({global, _}) -> timeout_by_custer_size(nodes());
 timeout({via, brick_global, _}) -> timeout_by_custer_size(brick_cluster:online_nodes()).
 
@@ -266,7 +280,7 @@ handle_reply({stop, Reason , Reply, Data, TS}, State) -> {stop, Reason , Reply, 
 handle_reply({stop, Reason, Data, TS}, State) -> {stop, Reason, update_state(State, Data, TS)};
 handle_reply(Other, _State) -> Other.
 
-update_state(State, Data, TS) when State#state.data =/= Data orelse State#state.ts =/= TS ->
+update_state(State=#state{status=?STATUS_MASTER}, Data, TS) when State#state.data =/= Data orelse State#state.ts =/= TS ->
 	uppdate_slaves(State, Data, TS),
 	State#state{data=Data, ts=TS};
 update_state(State, _Data, _TS) -> State.
