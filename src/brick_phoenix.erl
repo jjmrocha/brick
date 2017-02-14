@@ -264,6 +264,7 @@ local_name(Name) when is_atom(Name) -> Name;
 local_name(Name) -> exit({invalid_name, Name}).
 
 timeout({global, _}) -> timeout_by_custer_size(nodes());
+timeout({via, brick_global, brick_state}) -> timeout_by_custer_size(nodes());
 timeout({via, brick_global, _}) -> timeout_by_custer_size(brick_cluster:online_nodes()).
 
 timeout_by_custer_size([]) -> 0;
