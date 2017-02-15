@@ -1,5 +1,5 @@
 %%
-%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
+%% Copyright 2017 Joaquim Rocha <jrocha@gmailbox.org>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -14,15 +14,5 @@
 %% limitations under the License.
 %%
 
--record(brick_event, {name, value}).
-
--define(is_brick_event(Name, Event), (is_record(Event, brick_event) andalso Name =:= Event#brick_event.name)).
-
--define(BRICK_NEW_NODE_EVENT,'$brick_new_node').
--define(BRICK_NODE_DELETED_EVENT,'$brick_node_deleted').
-
--define(BRICK_NODE_UP_EVENT,'$brick_node_up').
--define(BRICK_NODE_DOWN_EVENT,'$brick_node_down').
-
--define(BRICK_SERVICE_UP_EVENT,'$brick_service_up').
--define(BRICK_SERVICE_DOWN_EVENT,'$brick_service_down').
+-define(STG_NO_VERSION, '$brick_stg_no_version').
+-record(stg_record, {key, value}).

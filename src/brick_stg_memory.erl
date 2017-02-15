@@ -1,6 +1,6 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
-%% 
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -16,30 +16,26 @@
 
 -module(brick_stg_memory).
 
+-include("brick_stg.hrl").
+
 -behaviour(brick_stg_handler).
 
--define(STATE_ITEM(Name, Version, Value), {Name, Version, Value}).
-
--export([init/1, states/1, read/2, write/4, code_change/3, terminate/1]).
+-export([init/1, read/1, write/3, code_change/3, terminate/1]).
 %% ====================================================================
 %% API functions
 %% ====================================================================
 
-init(_Args) -> {ok, []}. 
+-record(state, {version, data=[]}).
 
-states(State) -> 
-	StateList = [ Name || ?STATE_ITEM(Name, _, _) <- State ],
-	{ok, StateList, State}.
+init(_Args) ->
+	State = #state{version=?STG_NO_VERSION},
+	{ok, State}.
 
-read(Name, State) ->
-	case lists:keyfind(Name, 1, State) of
-		false -> {not_found, State};
-		?STATE_ITEM(_, Version, Value) -> {ok, Value, Version, State}
-	end.
+read(State=#state{version=Version, data=Data}) ->
+	{ok, Data, Version, State}.
 
-write(Name, Value, Version, State) -> 
-	NewState = lists:keystore(Name, 1, State, ?STATE_ITEM(Name, Version, Value)),
-	{ok, NewState}.
+write(Data, Version, State) ->
+	{ok, #state{version=Version, data=Data}}.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
@@ -48,5 +44,3 @@ terminate(_State) -> ok.
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-
-

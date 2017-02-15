@@ -1,6 +1,6 @@
 %%
-%% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
-%% 
+%% Copyright 2016-17 Joaquim Rocha <jrocha@gmailbox.org>
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -33,17 +33,16 @@ start_link() ->
 %% ====================================================================
 
 %% init/1
-init([]) ->	
+init([]) ->
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
-	
-	Procs = [worker(brick_event), 
-			 worker(brick_hlc), 
-			 worker(brick_state), 
+
+	Procs = [worker(brick_event),
+			 worker(brick_hlc),
+			 worker(brick_state),
 			 worker(brick_cluster), 
-			 worker(brick_gossip), 
-			 worker(brick_service), 
+			 worker(brick_service),
 			 supervisor(brick_async)] ++ optional([]),
-	
+
 	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================

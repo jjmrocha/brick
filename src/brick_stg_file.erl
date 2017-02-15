@@ -16,46 +16,41 @@
 
 -module(brick_stg_file).
 
+-include("brick_log.hrl").
+-include("brick_stg.hrl").
+
 -behaviour(brick_stg_handler).
 
--define(STATE_ITEM(Name, Version, Value), {Name, Version, Value}).
+-define(DATA(Version, Data), {{version, Version}, {state, Data}}).
+-define(ITEM(Name, Value), {Name, Value}).
 
--export([init/1, states/1, read/2, write/4, code_change/3, terminate/1]).
+-export([init/1, read/1, write/3, code_change/3, terminate/1]).
 %% ====================================================================
 %% API functions
 %% ====================================================================
 
--record(state, {file_name, data}).
-
 init(Args) ->
 	case lists:keyfind(file_name, 1, Args) of
 		false ->
-			error_logger:error_msg("~p: No value for parameter ~p\n", [?MODULE, file_name]),
+			?LOG_ERROR("No value for parameter ~p", [file_name]),
 			{stop, invalid_configuration};
-		{_, FileName} ->
-			case read_file(FileName) of
-				{ok, Data} ->
-					State = #state{file_name=FileName, data=Data},
-					{ok, State};
-				{error, Reason} -> {stop, Reason}
-			end
+		{_, FileName} -> {ok, FileName};
 	end.
 
-states(State = #state{data=Data}) ->
-	StateList = [ Name || ?STATE_ITEM(Name, _, _) <- Data ],
-	{ok, StateList, State}.
-
-read(Name, State = #state{data=Data}) ->
-	case lists:keyfind(Name, 1, Data) of
-		false -> {not_found, State};
-		?STATE_ITEM(_, Version, Value) -> {ok, Value, Version, State}
+read(FileName) ->
+	case read_file(FileName) of
+		{ok, ?DATA(Version, Data)} ->
+			List = [ #stg_record{key=Key, value=Value} || ?ITEM(Key, Value) <- Data ],
+			{ok, List, Version, FileName};
+		{error, enoent} -> {ok, [], ?STG_NO_VERSION, FileName};
+		{error, Reason} -> {stop, Reason, FileName}
 	end.
 
-write(Name, Value, Version, State = #state{file_name=FileName, data=Data}) ->
-	NewData = lists:keystore(Name, 1, Data, ?STATE_ITEM(Name, Version, Value)),
-	case write_file(FileName, NewData) of
-		ok -> {ok, State#state{data=NewData}};
-		{error, Reason} -> {stop, Reason, State}
+write(List, Version, FileName) ->
+	Data = [ ?ITEM(Key, Value) || #stg_record{key=Key, value=Value} <- List],
+	case write_file(FileName, ?DATA(Version, Data)) of
+		ok -> {ok, FileName};
+		{error, Reason} -> {stop, Reason, FileName}
 	end.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
