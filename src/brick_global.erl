@@ -17,6 +17,7 @@
 -module(brick_global).
 
 -include("brick_global.hrl").
+-include("brick_hlc.hrl").
 
 %% ====================================================================
 %% API functions
@@ -50,10 +51,13 @@ send(Name, Msg) ->
 resolver(_Name, Pid1, Pid2) ->
 	case {pid_timestamp(Pid1), pid_timestamp(Pid2)} of
 		{down, down} -> none;
+		{down, ?NO_TIMESTAMP} -> none;
 		{down, _} -> Pid2;
+		{?NO_TIMESTAMP, down} -> none;
 		{_, down} -> Pid1;
-		{none, _} -> Pid2;
-		{_, none} -> Pid1;
+		{?NO_TIMESTAMP, ?NO_TIMESTAMP} -> none;
+		{?NO_TIMESTAMP, _} -> Pid2;
+		{_, ?NO_TIMESTAMP} -> Pid1;
 		{TS1, TS2} ->
 			case brick_hlc:before(TS1, TS2) of
 				true -> Pid1;

@@ -17,6 +17,7 @@
 -module(brick_phoenix).
 
 -include("brick_global.hrl").
+-include("brick_hlc.hrl").
 
 -behaviour(gen_server).
 
@@ -130,7 +131,7 @@ send(Name, Msg) ->
 		args,
 		pdata,
 		cdata,
-		ts=none,
+		ts=?NO_TIMESTAMP,
 		role=?NO_ROLE,
 		slaves=[],
 		monitors=dict:new(),
@@ -167,9 +168,9 @@ handle_cast(Msg, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, t
 handle_cast(?UPDATE_MSG(NewClusterState, NewTS), State=#state{mod=Mod, pdata=ProcessState, role=?ROLE_SLAVE, run_update_handler=true}) ->
 	brick_hlc:update(NewTS),
 	case Mod:handle_state_update(ProcessState, NewClusterState, NewTS) of
-		{ok, NewProcessState} -> 
+		{ok, NewProcessState} ->
 			{noreply, State#state{pdata=NewProcessState, cdata=NewClusterState, ts=NewTS}};
-		{stop, Reason} -> 
+		{stop, Reason} ->
 			{stop, Reason, State}
 	end;
 
@@ -212,30 +213,30 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdat
 	case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Role} of
 		{true, ?NO_ROLE} ->
 			case Mod:init(Args) of
-				{ok, NewProcessState, NewClusterState, NewTS} -> 
+				{ok, NewProcessState, NewClusterState, NewTS} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
-				{ok, NewProcessState, NewClusterState, NewTS, hibernate} -> 
+				{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
-				{ok, NewProcessState, NewClusterState, NewTS, Timeout} -> 
+				{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
-				{stop, Reason} -> 
+				{stop, Reason} ->
 					{stop, Reason, State};
-				ignore -> 
+				ignore ->
 					{stop, ignore, State};
-				Other -> 
+				Other ->
 					Other
 			end;
 		{true, _} ->
 			case Mod:reborn(Args, ClusterState, TS) of
-				{ok, NewProcessState, NewClusterState, NewTS} -> 
+				{ok, NewProcessState, NewClusterState, NewTS} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
-				{ok, NewProcessState, NewClusterState, NewTS, hibernate} -> 
+				{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
-				{ok, NewProcessState, NewClusterState, NewTS, Timeout} -> 
+				{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
-				{stop, Reason} -> 
+				{stop, Reason} ->
 					{stop, Reason, State};
-				Other -> 
+				Other ->
 					Other
 			end;
 		{false, _} ->
@@ -262,9 +263,9 @@ terminate(_Reason, State) ->
 %% code_change/3
 code_change(OldVsn, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_MASTER}, Extra) ->
 	case Mod:code_change(OldVsn, ProcessState, ClusterState, TS, Extra) of
-		{ok, NewProcessState, NewClusterState, NewTS} -> 
+		{ok, NewProcessState, NewClusterState, NewTS} ->
 			{ok, update_state(NewProcessState, NewClusterState, NewTS, State)};
-		{error, Reason} -> 
+		{error, Reason} ->
 			{error, Reason}
 	end;
 
@@ -292,33 +293,33 @@ timeout_by_custer_size([]) -> 0;
 timeout_by_custer_size([_]) -> 0;
 timeout_by_custer_size(_) -> 1000.
 
-handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS}, State) -> 
+handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS}, State) ->
 	{reply, Reply, update_state(NewProcessState, NewClusterState, NewTS, State)};
-handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS, hibernate}, State) -> 
+handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS, hibernate}, State) ->
 	{reply, Reply, update_state(NewProcessState, NewClusterState, NewTS, State), hibernate};
-handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS, Timeout}, State) -> 
+handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS, Timeout}, State) ->
 	{reply, Reply, update_state(NewProcessState, NewClusterState, NewTS, State), Timeout};
-handle_reply({reply, Reply, NewProcessState}, State) -> 
+handle_reply({reply, Reply, NewProcessState}, State) ->
 	{reply, Reply, update_state(NewProcessState, State)};
-handle_reply({reply, Reply, NewProcessState, hibernate}, State) -> 
+handle_reply({reply, Reply, NewProcessState, hibernate}, State) ->
 	{reply, Reply, update_state(NewProcessState, State), hibernate};
-handle_reply({reply, Reply, NewProcessState, Timeout}, State) -> 
+handle_reply({reply, Reply, NewProcessState, Timeout}, State) ->
 	{reply, Reply, update_state(NewProcessState, State), Timeout};
-handle_reply({noreply, NewProcessState}, State) -> 
+handle_reply({noreply, NewProcessState}, State) ->
 	{noreply, update_state(NewProcessState, State)};
-handle_reply({noreply, NewProcessState, hibernate}, State) -> 
+handle_reply({noreply, NewProcessState, hibernate}, State) ->
 	{noreply, update_state(NewProcessState, State), hibernate};
-handle_reply({noreply, NewProcessState, Timeout}, State) -> 
+handle_reply({noreply, NewProcessState, Timeout}, State) ->
 	{noreply, update_state(NewProcessState, State), Timeout};
-handle_reply({noreply, NewProcessState, NewClusterState, NewTS}, State) -> 
+handle_reply({noreply, NewProcessState, NewClusterState, NewTS}, State) ->
 	{noreply, update_state(NewProcessState, NewClusterState, NewTS, State)};
-handle_reply({noreply, NewProcessState, NewClusterState, NewTS, hibernate}, State) -> 
+handle_reply({noreply, NewProcessState, NewClusterState, NewTS, hibernate}, State) ->
 	{noreply, update_state(NewProcessState, NewClusterState, NewTS, State), hibernate};
-handle_reply({noreply, NewProcessState, NewClusterState, NewTS, Timeout}, State) -> 
+handle_reply({noreply, NewProcessState, NewClusterState, NewTS, Timeout}, State) ->
 	{noreply, update_state(NewProcessState, NewClusterState, NewTS, State), Timeout};
-handle_reply({stop, Reason, Reply, NewProcessState}, State) -> 
+handle_reply({stop, Reason, Reply, NewProcessState}, State) ->
 	{stop, Reason, Reply, update_state(NewProcessState, State)};
-handle_reply({stop, Reason, NewProcessState}, State) -> 
+handle_reply({stop, Reason, NewProcessState}, State) ->
 	{stop, Reason, update_state(NewProcessState, State)};
 handle_reply(Other, _State) -> Other.
 

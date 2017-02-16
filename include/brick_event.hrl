@@ -14,9 +14,11 @@
 %% limitations under the License.
 %%
 
--record(brick_event, {name, value}).
+-record(brick_event, {type, name, value}).
 
 -define(is_brick_event(Name, Event), (is_record(Event, brick_event) andalso Name =:= Event#brick_event.name)).
+
+-define(BRICK_STATE_CHANGED_EVENT,'$brick_state_changed').
 
 -define(BRICK_NEW_NODE_EVENT,'$brick_new_node').
 -define(BRICK_NODE_DELETED_EVENT,'$brick_node_deleted').

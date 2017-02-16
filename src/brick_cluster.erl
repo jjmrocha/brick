@@ -97,7 +97,7 @@ handle_call({add_node, Node}, _From,  State=#state{cluster_nodes=ClusterNodes, o
 				ClusterName ->
 					ClusterNodes1 = [Node|ClusterNodes],
 					OnlineNodes1 = [Node|OnlineNodes],
-					brick_state:save_topology_state(ClusterNodes1),
+					brick_state:save_state(?BRICK_CLUSTER_TOPOLOGY_STATE, ClusterNodes1),
 					brick_event:publish(?MODULE, ?BRICK_NEW_NODE_EVENT, Node),
 					brick_event:publish(?MODULE, ?BRICK_NODE_UP_EVENT, Node),
 					{reply, ok, State#state{cluster_nodes=ClusterNodes1, online_nodes=OnlineNodes1}};
@@ -112,7 +112,7 @@ handle_call({remove_node, Node}, _From, State=#state{cluster_nodes=ClusterNodes,
 		true ->
 			ClusterNodes1 = lists:delete(Node, ClusterNodes),
 			OnlineNodes1 = lists:delete(Node, OnlineNodes),
-			brick_state:save_topology_state(ClusterNodes1),
+			brick_state:save_state(?BRICK_CLUSTER_TOPOLOGY_STATE, ClusterNodes1),
 			brick_event:publish(?MODULE, ?BRICK_NODE_DELETED_EVENT, Node),
 			{reply, ok, State#state{cluster_nodes=ClusterNodes1, online_nodes=OnlineNodes1}};
 		_ -> {reply, {error, not_member}, State}
@@ -145,7 +145,7 @@ handle_info({nodeup, Node}, State=#state{cluster_nodes=ClusterNodes, online_node
 			{noreply, State#state{online_nodes=OnlineNodes1}}
 	end;
 
-handle_info(#brick_event{name=?BRICK_CLUSTER_CHANGED_EVENT, value=NewClusterNodes}, State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
+handle_info(#brick_event{name=?BRICK_STATE_CHANGED_EVENT, value=NewClusterNodes}, State=#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}) ->
 	notify_new_nodes(NewClusterNodes, ClusterNodes),
 	{ok, OnlineNodes1} = online_nodes(NewClusterNodes, OnlineNodes),
 	{noreply, State#state{cluster_nodes=NewClusterNodes, online_nodes=OnlineNodes1}};
@@ -156,8 +156,8 @@ handle_info({update}, State=#state{cluster_nodes=ClusterNodes, online_nodes=Onli
 
 handle_info(timeout, State) ->
 	net_kernel:monitor_nodes(true),
-	brick_state:subscribe_topology_events(),
-	ClusterNodes = case brick_state:read_topology_state() of
+	brick_state:subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE),
+	ClusterNodes = case brick_state:read_state(?BRICK_CLUSTER_TOPOLOGY_STATE) of
 		{ok, Topology, _Version} -> Topology;
 		_ -> [node()]
 	end,

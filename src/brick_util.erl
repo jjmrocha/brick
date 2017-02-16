@@ -25,8 +25,9 @@
 -export([whereis_name/1, register_name/2, register_name/3, unregister_name/1, send/2]).
 -export([iif/3]).
 
-remove([], List) -> List;
-remove([H|T], List) -> remove(T, lists:delete(H, List)).
+remove(_List1, []) -> [];
+remove([], List2) -> List2;
+remove([H|T], List2) -> remove(T, lists:delete(H, List2)).
 
 common(_List1, []) -> [];
 common([], _List2) -> [];

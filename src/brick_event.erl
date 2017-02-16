@@ -1,6 +1,6 @@
 %%
 %% Copyright 2016 Joaquim Rocha <jrocha@gmailbox.org>
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
@@ -43,8 +43,8 @@ unsubscribe(Type, EventName, Subscriber) ->
 	gen_event:delete_handler(?MODULE, ?HANDLER(Type, EventName, Subscriber), unsubscribe).
 
 publish(Type, EventName, Value) ->
-	Event = #brick_event{name=EventName, value=Value},
-	gen_event:notify(?MODULE, {Type, Event}).
+	Event = #brick_event{type=Type, name=EventName, value=Value},
+	gen_event:notify(?MODULE, Event).
 
 %% ====================================================================
 %% Behavioural functions
@@ -57,7 +57,7 @@ init([Type, EventName, Subscriber]) ->
 	{ok, #state{type=Type, name=EventName, subscriber=Subscriber, ref=MonitorRef}}.
 
 %% handle_event/2
-handle_event({Type, Event=#brick_event{name=EventName}}, State=#state{type=Type, name=EventName, subscriber=Subscriber}) ->
+handle_event(Event=#brick_event{type=Type, name=EventName}, State=#state{type=Type, name=EventName, subscriber=Subscriber}) ->
 	Subscriber ! Event,
 	{ok, State};
 
@@ -90,6 +90,3 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-
-
-

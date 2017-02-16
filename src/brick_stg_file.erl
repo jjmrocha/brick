@@ -34,8 +34,8 @@ init(Args) ->
 		false ->
 			?LOG_ERROR("No value for parameter ~p", [file_name]),
 			{stop, invalid_configuration};
-		{_, FileName} -> {ok, FileName};
-		end.
+		{_, FileName} -> {ok, FileName}
+	end.
 
 read(FileName) ->
 	case read_file(FileName) of

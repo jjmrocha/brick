@@ -19,12 +19,13 @@
 -include("brick_log.hrl").
 -include("brick_event.hrl").
 -include("brick_stg.hrl").
+-include("brick_hlc.hrl").
 
 -define(NAME, {via, brick_global, ?MODULE}).
 
 -behaviour(brick_phoenix).
 
--export([init/1, handle_call/4, handle_cast/3, handle_info/3, terminate/3, code_change/4, reborn/2, handle_state_update/2]).
+-export([init/1, handle_call/5, handle_cast/4, handle_info/4, terminate/4, code_change/5, reborn/3, handle_state_update/3]).
 
 %% ====================================================================
 %% API functions
@@ -55,63 +56,63 @@ state_names() ->
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
--record(state, {mod, data, state_data}).
+-record(state, {mod, data}).
 
 %% init/1
 init([]) ->
-	?LOG_INFO("[~p] starting on [~p]...", [Mod, self()]),
 	Mod = brick_config:get_env(storage_handler),
 	Config = brick_config:get_env(storage_handler_config),
+	?LOG_INFO("[~p] starting on [~p]...", [Mod, self()]),
 	case init(Mod, Config) of
-		{ok, Data} -> {ok, #state{mod=Mod, data=Data}, none, 0};
+		{ok, Data} -> {ok, #state{mod=Mod, data=Data}, [], ?NO_TIMESTAMP, 0};
 		{stop, Reason} -> {stop, Reason}
 	end.
 
 %% handle_call/3
-handle_call({read, StateName}, _From, State=#state{state_data=StateData}, Version) ->
+handle_call({read, StateName}, _From, State, StateData, _Version) ->
 	case dict:find(StateName, StateData) of
-		{ok, StateValue} -> {reply, {ok, StateValue}, State, Version};
-		false -> {reply, not_found, State, Version}
+		{ok, StateValue} -> {reply, {ok, StateValue}, State};
+		false -> {reply, not_found, State}
 	end;
 
-handle_call({state_names}, _From, State=#state{state_data=StateData}, Version) ->
+handle_call({state_names}, _From, State, StateData, _Version) ->
 	StateNameList = dict:fetch_keys(StateData),
-	{reply, {ok, StateNameList}, State, Version};
+	{reply, {ok, StateNameList}, State};
 
-handle_call(_Request, _From, State, Version) ->
-	{noreply, State, Version}.
+handle_call(_Request, _From, State, _StateData, _Version) ->
+	{noreply, State}.
 
 %% handle_cast/2
-handle_cast({save, StateName, StateValue}, State=#state{mod=Mod, data=Data, state_data=StateData}, OldVersion) ->
+handle_cast({save, StateName, StateValue}, State=#state{mod=Mod, data=Data}, StateData, _Version) ->
 	Version = brick_hlc:timestamp(),
 	NewStateData = dict:store(StateName, StateValue, StateData),
 	case write(Mod, Data, NewStateData, Version) of
 		{ok, NewData} ->
 			send_events(StateData, NewStateData),
-			{noreply, State#state{data=NewData, state_data=NewStateData}, Version};
-		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, OldVersion}
+			{noreply, State#state{data=NewData}, NewStateData, Version};
+		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 	end;
 
-handle_cast(_Msg, State, Version) ->
-	{noreply, State, Version}.
+handle_cast(_Msg, State, _StateData, _Version) ->
+	{noreply, State}.
 
 %% handle_info/2
-handle_info(timeout, State=#state{mod=Mod, data=Data}, OldVersion) ->
+handle_info(timeout, State=#state{mod=Mod, data=Data}, _StateData, _Version) ->
 	case read(Mod, Data) of
-		{ok, StgData, ?STG_NO_VERSION, NewData} ->
-			{noreply, State#state{data=NewData, state_data=[]}, none};
+		{ok, _StgData, ?STG_NO_VERSION, NewData} ->
+			{noreply, State#state{data=NewData}};
 		{ok, StgData, EncodedVersion, NewData} ->
 			Version = brick_hlc:decode(EncodedVersion),
 			StateData = convert_stg(StgData),
-			{noreply, State#state{data=NewData, state_data=StateData}, Version};
-		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, OldVersion}
+			{noreply, State#state{data=NewData}, StateData, Version};
+		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 	end;
 
-handle_info(_Info, State, Version) ->
-	{noreply, State, Version}.
+handle_info(_Info, State, _StateData, _Version) ->
+	{noreply, State}.
 
 %% terminate/2
-terminate(_Reason, #state{mod=Mod, data=Data}, _Version) ->
+terminate(_Reason, #state{mod=Mod, data=Data}, _StateData, _Version) ->
 	try Mod:terminate(Data)
 	catch Error:Reason ->
 			LogArgs = [Mod, Error, Reason],
@@ -119,9 +120,9 @@ terminate(_Reason, #state{mod=Mod, data=Data}, _Version) ->
 	end.
 
 %% code_change/3
-code_change(OldVsn, State=#state{mod=Mod, data=Data}, Version, Extra) ->
+code_change(OldVsn, State=#state{mod=Mod, data=Data}, StateData, Version, Extra) ->
 	try Mod:change(OldVsn, Data, Extra) of
-		{ok, NewData} -> {ok, State#state{data=NewData}, Version};
+		{ok, NewData} -> {ok, State#state{data=NewData}, StateData, Version};
 		{error, Reason} -> {error, Reason}
 	catch Error:Reason ->
 			LogArgs = [Mod, OldVsn, Extra, Error, Reason],
@@ -134,27 +135,27 @@ code_change(OldVsn, State=#state{mod=Mod, data=Data}, Version, Extra) ->
 %% ====================================================================
 
 %% reborn/3
-reborn([], State, Version) ->
+reborn([], StateData, Version) ->
 	Mod = brick_config:get_env(storage_handler),
 	Config = brick_config:get_env(storage_handler_config),
 	case init(Mod, Config) of
-		{ok, Data} -> {ok, State#state{mod=Mod, data=Data}, Version};
+		{ok, Data} -> {ok, #state{mod=Mod, data=Data}, StateData, Version};
 		{stop, Reason} -> {stop, Reason}
 	end.
 
 %% handle_state_update/2
-handle_state_update(State=#state{mod=Mod, data=Data, state_data=NewStateData}, Version) ->
+handle_state_update(State=#state{mod=Mod, data=Data}, NewStateData, Version) ->
 	case read(Mod, Data) of
 		{ok, StgData, _, ReadData} ->
 			StateData = convert_stg(StgData),
 			case write(Mod, ReadData, NewStateData, Version) of
 				{ok, NewData} ->
 					send_events(StateData, NewStateData),
-					{noreply, State#state{data=NewData, state_data=NewStateData}, Version};
-				{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, Version}
-			end
-			{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, Version}
-			end.
+					{noreply, State#state{data=NewData}};
+				{stop, _Reason, NewData} -> {stop, State#state{data=NewData}}
+			end;
+		{stop, _Reason, ReadData} -> {stop, State#state{data=ReadData}}
+	end.
 
 %% ====================================================================
 %% Internal functions
@@ -171,7 +172,7 @@ init(Mod, Config) ->
 read(Mod, Data) ->
 	try Mod:read(Data)
 	catch Error:Reason ->
-			LogArgs = [Mod, StateName, Error, Reason],
+			LogArgs = [Mod, Error, Reason],
 			?LOG_ERROR("Error while executing ~p:read(~p, State) -> ~p:~p", LogArgs),
 			{stop, system_error, Data}
 	end.
