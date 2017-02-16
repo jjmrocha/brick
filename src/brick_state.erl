@@ -153,8 +153,8 @@ handle_state_update(State=#state{mod=Mod, data=Data, state_data=NewStateData}, V
 					{noreply, State#state{data=NewData, state_data=NewStateData}, Version};
 				{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, Version}
 			end
-		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, Version}
-	end.
+			{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}, Version}
+			end.
 
 %% ====================================================================
 %% Internal functions
@@ -163,9 +163,9 @@ handle_state_update(State=#state{mod=Mod, data=Data, state_data=NewStateData}, V
 init(Mod, Config) ->
 	try Mod:init(Config)
 	catch Error:Reason ->
-		LogArgs = [Mod, Config, Error, Reason],
-		?LOG_ERROR("Error while executing ~p:init(~p) -> ~p:~p", LogArgs),
-		{stop, Reason}
+			LogArgs = [Mod, Config, Error, Reason],
+			?LOG_ERROR("Error while executing ~p:init(~p) -> ~p:~p", LogArgs),
+			{stop, Reason}
 	end.
 
 read(Mod, Data) ->
@@ -179,8 +179,8 @@ read(Mod, Data) ->
 write(Mod, Data, StateData, Version) ->
 	EncodedVersion = brick_hlc:encode(Version),
 	List = dict:fold(fun(Key, Value, Acc) ->
-			[#stg_record{key=Key, value=Value}|Acc]
-		end, [], StateData),
+					[#stg_record{key=Key, value=Value}|Acc]
+			end, [], StateData),
 	try Mod:write(List, EncodedVersion, Data) of
 		{ok, NewData} -> {ok, NewData};
 		{stop, Reason, NewData} -> {stop, Reason, NewData}
@@ -192,15 +192,15 @@ write(Mod, Data, StateData, Version) ->
 
 convert_stg(StgData) ->
 	lists:foldl(fun(#stg_record{key=Key, value=Value}, Dict) ->
-			dict:store(Key, Value, Dict)
+				dict:store(Key, Value, Dict)
 		end, dict:new(), StgData).
 
 send_events(OldStateData, NewStateData) ->
 	dict:fold(fun(Key, Value, _Acc) ->
-			case dict:find(Key, OldStateData) of
-				{ok, Value} -> ok;
-				_ -> send_event(Key, Value)
-			end
+				case dict:find(Key, OldStateData) of
+					{ok, Value} -> ok;
+					_ -> send_event(Key, Value)
+				end
 		end, ignore, NewStateData).
 
 send_event(StateName, StateValue) ->

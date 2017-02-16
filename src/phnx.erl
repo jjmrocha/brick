@@ -6,33 +6,33 @@
 
 -define(NAME, {via, brick_global, ?MODULE}).
 
--export([init/1, handle_call/4, handle_cast/3, handle_info/3, terminate/3, code_change/4]).
--export([reborn/2]).
+-export([init/1, handle_call/5, handle_cast/4, handle_info/4, terminate/4, code_change/5]).
+-export([reborn/3]).
 -export([start/0, set/2, get/1]).
 
 start() ->
-  brick_phoenix:start(?NAME, ?MODULE,[]).
+	brick_phoenix:start(?NAME, ?MODULE,[]).
 
 set(Key, Value) ->
-  brick_phoenix:cast(?NAME, {set, Key, Value}).
+	brick_phoenix:cast(?NAME, {set, Key, Value}).
 
 get(Key) ->
-  brick_phoenix:call_local(?NAME, {get, Key}).
+	brick_phoenix:call_local(?NAME, {get, Key}).
 
 init([]) ->
-  ?LOG_INFO("Master", []),
-  {ok, dict:new(), brick_hlc:timestamp()}.
+	?LOG_INFO("Master", []),
+	{ok, [], dict:new(), brick_hlc:timestamp()}.
 
-handle_call({get, Key}, _From, Dict, TS) -> {reply, dict:find(Key, Dict), Dict, TS}.
+handle_call({get, Key}, _From, State, Dict, _TS) -> {reply, dict:find(Key, Dict), State}.
 
-handle_cast({set, Key, Value}, Dict, _TS) -> {noreply, dict:store(Key, Value, Dict), brick_hlc:timestamp()}.
+handle_cast({set, Key, Value}, State, Dict, _TS) -> {noreply, State, dict:store(Key, Value, Dict), brick_hlc:timestamp()}.
 
-handle_info(_Info, State, TS) -> {noreply, State, TS}.
+handle_info(_Info, State, _Dict, _TS) -> {noreply, State}.
 
-terminate(_, _, _) -> ok.
+terminate(_, _, _, _) -> ok.
 
-code_change(_OldVsn, State, TS, _Extra) -> {ok, State, TS}.
+code_change(_OldVsn, State, Dict, TS, _Extra) -> {ok, State, Dict, TS}.
 
-reborn([], State, TS) ->
-  ?LOG_INFO("Master (reborn)", []),
-  {ok, State, TS}.
+reborn([], Dict, TS) ->
+	?LOG_INFO("Master (reborn)", []),
+	{ok, [], Dict, TS}.
