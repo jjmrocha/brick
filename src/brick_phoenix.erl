@@ -217,8 +217,8 @@ handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessS
 	end;
 
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdata=ClusterState, ts=TS}) ->
-	case brick_util:whereis_name(Name) of
-		undefined ->
+	case election_day(Name, Role) of
+		true ->
 			case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Role} of
 				{true, ?NO_ROLE} ->
 					case Mod:init(Args) of
@@ -309,6 +309,13 @@ timeout({via, brick_global, _}) -> timeout_by_custer_size(brick_cluster:online_n
 timeout_by_custer_size([]) -> 0;
 timeout_by_custer_size([_]) -> 0;
 timeout_by_custer_size(_) -> 1000.
+
+election_day(_Name, ?NO_ROLE) -> true;
+election_day(Name, _Role) ->
+	case brick_util:whereis_name(Name) of
+		undefined -> true;
+		_ -> false
+	end.
 
 handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS}, State) ->
 	{reply, Reply, update_state(NewProcessState, NewClusterState, NewTS, State)};
