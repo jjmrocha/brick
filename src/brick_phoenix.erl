@@ -216,49 +216,51 @@ handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessS
 		{_, State1} -> {noreply, State1, 0}
 	end;
 
-handle_info(Info = timeout, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_MASTER}) ->
-	Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
-	handle_reply(Reply, State);
-
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdata=ClusterState, ts=TS}) ->
-	case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Role} of
-		{true, ?NO_ROLE} ->
-			case Mod:init(Args) of
-				{ok, NewProcessState, NewClusterState, NewTS} ->
-					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
-				{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
-					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
-				{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
-					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
-				{stop, Reason} ->
-					{stop, Reason, State};
-				ignore ->
-					{stop, ignore, State};
-				Other ->
-					Other
-			end;
-		{true, ?ROLE_SLAVE} ->
-			case Mod:reborn(Args, ClusterState, TS) of
-				{ok, NewProcessState, NewClusterState, NewTS} ->
-					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
-				{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
-					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
-				{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
-					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
-				{stop, Reason} ->
-					{stop, Reason, State};
-				Other ->
-					Other
+	case brick_util:whereis_name(Name) of
+		undefined ->
+			case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Role} of
+				{true, ?NO_ROLE} ->
+					case Mod:init(Args) of
+						{ok, NewProcessState, NewClusterState, NewTS} ->
+							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
+						{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
+							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
+						{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
+							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
+						{stop, Reason} ->
+							{stop, Reason, State};
+						ignore ->
+							{stop, ignore, State};
+						Other ->
+							Other
+					end;
+				{true, ?ROLE_SLAVE} ->
+					case Mod:reborn(Args, ClusterState, TS) of
+						{ok, NewProcessState, NewClusterState, NewTS} ->
+							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
+						{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
+							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
+						{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
+							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
+						{stop, Reason} ->
+							{stop, Reason, State};
+						Other ->
+							Other
+					end;
+				_ ->
+					case brick_util:whereis_name(Name) of
+						undefined -> {noreply, State, 0};
+						Pid ->
+							gen_server:cast(Pid, ?WELCOME_MSG(self())),
+							{noreply, monitor_pid(State#state{role=?ROLE_SLAVE}, Pid)}
+					end
 			end;
 		_ ->
-			case brick_util:whereis_name(Name) of
-				undefined -> {noreply, State, 0};
-				Pid ->
-					gen_server:cast(Pid, ?WELCOME_MSG(self())),
-					{noreply, monitor_pid(State#state{role=?ROLE_SLAVE}, Pid)}
-			end
+			Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
+			handle_reply(Reply, State)
 	end;
-
+			
 handle_info(Info, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
 	Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
 	handle_reply(Reply, State);
