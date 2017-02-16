@@ -80,7 +80,9 @@
 %% API functions
 %% ====================================================================
 -export([start_link/3, start/3]).
--export([call_master/2, call_master/3, call_local/2, call_local/3, cast/2, send/2]).
+-export([call_master/2, call_master/3, call_local/2, call_local/3]).
+-export([cast_master/2, cast_local/2]).
+-export([send_master/2, send_local/2]).
 
 start_link(Name, Mod, Args) ->
 	validate_name(Name),
@@ -108,11 +110,21 @@ call_local(Name, Msg, Timeout) when is_atom(Name) ->
 call_local(Name, Msg, Timeout) ->
 	call_local(local_name(Name), Msg, Timeout).
 
-cast(Name, Msg) ->
+cast_master(Name, Msg) ->
 	gen_server:cast(Name, Msg).
 
-send(Name, Msg) ->
+cast_local(Name, Msg) when is_atom(Name) ->
+	gen_server:cast(Name, Msg);
+cast_local(Name, Msg) ->
+	cast_local(local_name(Name), Msg).
+
+send_master(Name, Msg) ->
 	brick_util:send(Name, Msg).
+
+send_local(Name, Msg) when is_atom(Name) ->
+	brick_util:send(Name, Msg);
+send_local(Name, Msg) ->
+	send_local(local_name(Name), Msg).
 
 %% ====================================================================
 %% Behavioural functions
@@ -161,10 +173,6 @@ handle_cast(?WELCOME_MSG(From), State=#state{cdata=ClusterState, ts=TS, role=?RO
 	SlaveList1 = brick_util:iif(lists:member(From, SlaveList), SlaveList, [From|SlaveList]),
 	{noreply, State1#state{slaves=SlaveList1}};
 
-handle_cast(Msg, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_MASTER}) ->
-	Reply = Mod:handle_cast(Msg, ProcessState, ClusterState, TS),
-	handle_reply(Reply, State);
-
 handle_cast(?UPDATE_MSG(NewClusterState, NewTS), State=#state{mod=Mod, pdata=ProcessState, role=?ROLE_SLAVE, run_update_handler=true}) ->
 	brick_hlc:update(NewTS),
 	case Mod:handle_state_update(ProcessState, NewClusterState, NewTS) of
@@ -178,8 +186,9 @@ handle_cast(?UPDATE_MSG(NewClusterState, NewTS), State=#state{role=?ROLE_SLAVE})
 	brick_hlc:update(NewTS),
 	{noreply, State#state{cdata=NewClusterState, ts=NewTS}};
 
-handle_cast(_Msg, State=#state{role=?ROLE_SLAVE}) ->
-	{noreply, State};
+handle_cast(Msg, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
+	Reply = Mod:handle_cast(Msg, ProcessState, ClusterState, TS),
+	handle_reply(Reply, State);
 
 handle_cast(_Msg, State) ->
 	{noreply, State, hibernate}.
@@ -199,15 +208,17 @@ handle_info(?RESOLVE_REQUEST(From, Ref), State=#state{ts=TS}) ->
 	From ! ?RESOLVE_RESPONSE(Ref, TS),
 	{noreply, State};
 
-handle_info(Info, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_MASTER}) ->
-	Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
-	handle_reply(Reply, State);
-
-handle_info({'DOWN', MRef, _, _, _}, State=#state{role=?ROLE_SLAVE}) ->
+handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_SLAVE}) ->
 	case remove_ref(State, MRef) of
-		ignore -> {noreply, State};
+		ignore -> 
+			Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
+			handle_reply(Reply, State);			
 		{_, State1} -> {noreply, State1, 0}
 	end;
+
+handle_info(Info = timeout, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_MASTER}) ->
+	Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
+	handle_reply(Reply, State);
 
 handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdata=ClusterState, ts=TS}) ->
 	case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Role} of
@@ -226,7 +237,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdat
 				Other ->
 					Other
 			end;
-		{true, _} ->
+		{true, ?ROLE_SLAVE} ->
 			case Mod:reborn(Args, ClusterState, TS) of
 				{ok, NewProcessState, NewClusterState, NewTS} ->
 					{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
@@ -239,7 +250,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdat
 				Other ->
 					Other
 			end;
-		{false, _} ->
+		_ ->
 			case brick_util:whereis_name(Name) of
 				undefined -> {noreply, State, 0};
 				Pid ->
@@ -247,6 +258,10 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdat
 					{noreply, monitor_pid(State#state{role=?ROLE_SLAVE}, Pid)}
 			end
 	end;
+
+handle_info(Info, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
+	Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
+	handle_reply(Reply, State);
 
 handle_info(_Info, State) ->
 	{noreply, State, hibernate}.
