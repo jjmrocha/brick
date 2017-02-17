@@ -27,10 +27,8 @@
 %% ====================================================================
 
 -callback init(Args :: term()) ->
-	{ok, ProcessState :: term(), ClusterState :: term(), TS :: brick_hlc:timestamp()} |
-	{ok, ProcessState :: term(), ClusterState :: term(), TS :: brick_hlc:timestamp(), timeout() | hibernate} |
-	{stop, Reason :: term()} |
-	ignore.
+	{ok, ProcessState :: term()} |
+	{stop, Reason :: term()}.
 
 -callback handle_call(Request :: term(), From :: {pid(), Tag :: term()}, ProcessState :: term(), ClusterState :: term(), TS :: brick_hlc:timestamp()) ->
 	{reply, Reply :: term(), NewProcessState :: term(), NewClusterState :: term(), NewTS :: brick_hlc:timestamp()} |
@@ -65,10 +63,15 @@
 	{ok, NewProcessState :: term(), NewClusterState :: term(), NewTS :: brick_hlc:timestamp()} |
 	{error, Reason :: term()}.
 
--callback reborn(Args :: term(), ClusterState :: term(), TS :: brick_hlc:timestamp()) ->
+-callback elected(NewProcessState :: term()) ->
 	{ok, NewProcessState :: term(), NewClusterState :: term(), NewTS :: brick_hlc:timestamp()} |
 	{ok, NewProcessState :: term(), NewClusterState :: term(), NewTS :: brick_hlc:timestamp(), timeout() | hibernate} |
-	{stop, Reason :: term()}.
+	{stop, Reason :: term(), NewProcessState :: term()}.
+
+-callback reborn(NewProcessState :: term(), ClusterState :: term(), TS :: brick_hlc:timestamp()) ->
+	{ok, NewProcessState :: term(), NewClusterState :: term(), NewTS :: brick_hlc:timestamp()} |
+	{ok, NewProcessState :: term(), NewClusterState :: term(), NewTS :: brick_hlc:timestamp(), timeout() | hibernate} |
+	{stop, Reason :: term(), NewProcessState :: term()}.
 
 -callback handle_state_update(ProcessState :: term(), ClusterState :: term(), TS :: brick_hlc:timestamp()) ->
 	{ok, NewProcessState :: term()} |
@@ -140,7 +143,6 @@ send_local(Name, Msg) ->
 
 -record(state, {name,
 		mod,
-		args,
 		pdata,
 		cdata,
 		ts=?NO_TIMESTAMP,
@@ -151,12 +153,17 @@ send_local(Name, Msg) ->
 
 %% init/1
 init([Name, Mod, Args]) ->
-	State = #state{name=Name,
-			mod=Mod,
-			args=Args,
-			run_update_handler=erlang:function_exported(Mod, handle_state_update, 1)},
-	Timeout = timeout(Name),
-	{ok, State, Timeout}.
+	case Mod:init(Args) of
+		{ok, NewProcessState} ->
+			State = #state{name=Name,
+					mod=Mod,
+					pdata=NewProcessState,
+					run_update_handler=erlang:function_exported(Mod, handle_state_update, 1)},
+			Timeout = timeout(Name),
+			{ok, State, Timeout};
+		{stop, Reason} ->
+			{stop, Reason}
+	end.
 
 %% handle_call/3
 handle_call(Request, From, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
@@ -178,7 +185,7 @@ handle_cast(?UPDATE_MSG(NewClusterState, NewTS), State=#state{mod=Mod, pdata=Pro
 	case Mod:handle_state_update(ProcessState, NewClusterState, NewTS) of
 		{ok, NewProcessState} ->
 			{noreply, State#state{pdata=NewProcessState, cdata=NewClusterState, ts=NewTS}};
-		{stop, Reason} ->
+		{error, Reason} ->
 			{stop, Reason, State}
 	end;
 
@@ -204,8 +211,8 @@ handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessS
 			{noreply, State1#state{slaves=SlaveList}}
 	end;
 
-handle_info(?RESOLVE_REQUEST(From, Ref), State=#state{ts=TS}) ->
-	From ! ?RESOLVE_RESPONSE(Ref, TS),
+handle_info(?RESOLVE_REQUEST(From, Ref), State=#state{slaves=SlaveList, ts=TS}) ->
+	From ! ?RESOLVE_RESPONSE(Ref, {length(SlaveList), encode_ts(TS)}),
 	{noreply, State};
 
 handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_SLAVE}) ->
@@ -216,37 +223,31 @@ handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessS
 		{_, State1} -> {noreply, State1, 0}
 	end;
 
-handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdata=ClusterState, ts=TS}) ->
+handle_info(Info = timeout, State=#state{name=Name, mod=Mod, role=Role, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
 	case election_day(Name, Role) of
 		true ->
 			case {brick_util:register_name(Name, self(), fun brick_global:resolver/3), Role} of
 				{true, ?NO_ROLE} ->
-					case Mod:init(Args) of
+					case Mod:elected(ProcessState) of
 						{ok, NewProcessState, NewClusterState, NewTS} ->
 							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
 						{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
 							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
 						{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
 							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
-						{stop, Reason} ->
-							{stop, Reason, State};
-						ignore ->
-							{stop, ignore, State};
-						Other ->
-							Other
+						{stop, Reason, NewProcessState} ->
+							{stop, Reason, update_state(NewProcessState, State)}
 					end;
 				{true, ?ROLE_SLAVE} ->
-					case Mod:reborn(Args, ClusterState, TS) of
+					case Mod:reborn(ProcessState, ClusterState, TS) of
 						{ok, NewProcessState, NewClusterState, NewTS} ->
 							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER})};
 						{ok, NewProcessState, NewClusterState, NewTS, hibernate} ->
 							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), hibernate};
 						{ok, NewProcessState, NewClusterState, NewTS, Timeout} ->
 							{noreply, update_state(NewProcessState, NewClusterState, NewTS, State#state{role=?ROLE_MASTER}), Timeout};
-						{stop, Reason} ->
-							{stop, Reason, State};
-						Other ->
-							Other
+						{stop, Reason, NewProcessState} ->
+							{stop, Reason, update_state(NewProcessState, State)}
 					end;
 				_ ->
 					case brick_util:whereis_name(Name) of
@@ -260,7 +261,7 @@ handle_info(timeout, State=#state{name=Name, mod=Mod, args=Args, role=Role, cdat
 			Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
 			handle_reply(Reply, State)
 	end;
-			
+
 handle_info(Info, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
 	Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
 	handle_reply(Reply, State);
@@ -316,6 +317,9 @@ election_day(Name, _Role) ->
 		undefined -> true;
 		_ -> false
 	end.
+
+encode_ts(?NO_TIMESTAMP) -> ?NO_TIMESTAMP;
+encode_ts(TS) -> brick_hlc:encode(TS).
 
 handle_reply({reply, Reply, NewProcessState, NewClusterState, NewTS}, State) ->
 	{reply, Reply, update_state(NewProcessState, NewClusterState, NewTS, State)};

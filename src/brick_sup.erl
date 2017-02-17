@@ -35,14 +35,14 @@ start_link() ->
 %% init/1
 init([]) ->
 	SupFlags = #{strategy => one_for_one, intensity => 2, period => 10},
-
+	
 	Procs = [worker(brick_event),
-			 worker(brick_hlc),
-			 worker(brick_state),
-			 worker(brick_cluster), 
-			 worker(brick_service),
-			 supervisor(brick_async)] ++ optional([]),
-
+			worker(brick_hlc),
+			worker(brick_state),
+			worker(brick_cluster), 
+			worker(brick_service),
+			supervisor(brick_async)] ++ optional([]),
+	
 	{ok, {SupFlags, Procs}}.
 
 %% ====================================================================

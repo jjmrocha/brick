@@ -49,20 +49,13 @@ send(Name, Msg) ->
 	global:send(name(Name), Msg).
 
 resolver(_Name, Pid1, Pid2) ->
-	case {pid_timestamp(Pid1), pid_timestamp(Pid2)} of
+	case {resolve_argument(Pid1), resolve_argument(Pid2)} of
 		{down, down} -> none;
-		{down, ?NO_TIMESTAMP} -> none;
 		{down, _} -> Pid2;
-		{?NO_TIMESTAMP, down} -> none;
 		{_, down} -> Pid1;
-		{?NO_TIMESTAMP, ?NO_TIMESTAMP} -> none;
-		{?NO_TIMESTAMP, _} -> Pid2;
-		{_, ?NO_TIMESTAMP} -> Pid1;
-		{TS1, TS2} ->
-			case brick_hlc:before(TS1, TS2) of
-				true -> Pid1;
-				_ -> Pid2
-			end
+		{Arg, Arg} -> none;
+		{Arg1, Arg2} when Arg1 < Arg2 -> Pid2;
+		_ -> Pid1
 	end.
 
 %% ====================================================================
@@ -71,13 +64,13 @@ resolver(_Name, Pid1, Pid2) ->
 
 name(Id) -> ?CLUSTER_NAME(brick_system:cluster_name(false), Id).
 
-pid_timestamp(Pid) ->
+resolve_argument(Pid) ->
 	MRef = erlang:monitor(process, Pid),
 	Pid ! ?RESOLVE_REQUEST(self(), MRef),
 	receive
-		?RESOLVE_RESPONSE(MRef, Timestamp) ->
+		?RESOLVE_RESPONSE(MRef, Argument) ->
 			erlang:demonitor(MRef, [flush]),
-			Timestamp;
+			Argument;
 		{'DOWN', MRef, _, _, _} ->
 			down
 	end.

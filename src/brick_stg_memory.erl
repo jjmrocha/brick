@@ -35,7 +35,7 @@ read(State=#state{version=Version, data=Data}) ->
 	{ok, Data, Version, State}.
 
 write(Data, Version, State) ->
-	{ok, #state{version=Version, data=Data}}.
+	{ok, State#state{version=Version, data=Data}}.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 

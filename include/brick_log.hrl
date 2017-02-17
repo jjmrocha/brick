@@ -15,4 +15,4 @@
 %%
 
 -define(LOG_INFO(Msg, Args), error_logger:info_msg("~p => " ++ Msg ++ "\n", [?MODULE] ++ Args)).
--define(LOG_ERROR(Msg, Args), error_logger:error_msg("~p:~p/~p => " ++ Msg ++ "\n", [?MODULE, ?FUNCTION_NAME, ?FUNCTION_ARITY] ++ Args)).
+-define(LOG_ERROR(Msg, Args), error_logger:error_msg("~p => " ++ Msg ++ "\n", [?MODULE] ++ Args)).

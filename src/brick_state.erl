@@ -25,7 +25,7 @@
 
 -behaviour(brick_phoenix).
 
--export([init/1, handle_call/5, handle_cast/4, handle_info/4, terminate/4, code_change/5, reborn/3, handle_state_update/3]).
+-export([init/1, handle_call/5, handle_cast/4, handle_info/4, terminate/4, code_change/5, elected/1, reborn/3, handle_state_update/3]).
 
 %% ====================================================================
 %% API functions
@@ -42,7 +42,7 @@ read_state(StateName) ->
 	brick_phoenix:call_local(?MODULE, {read, StateName}).
 
 save_state(StateName, StateValue) ->
-	brick_phoenix:cast(?NAME, {save, StateName, StateValue}).
+	brick_phoenix:cast_master(?NAME, {save, StateName, StateValue}).
 
 subscribe_state_events(StateName) ->
 	subscribe(StateName, ?BRICK_STATE_CHANGED_EVENT).
@@ -64,7 +64,7 @@ init([]) ->
 	Config = brick_config:get_env(storage_handler_config),
 	?LOG_INFO("[~p] starting on [~p]...", [Mod, self()]),
 	case init(Mod, Config) of
-		{ok, Data} -> {ok, #state{mod=Mod, data=Data}, [], ?NO_TIMESTAMP, 0};
+		{ok, Data} -> {ok, #state{mod=Mod, data=Data}};
 		{stop, Reason} -> {stop, Reason}
 	end.
 
@@ -97,17 +97,6 @@ handle_cast(_Msg, State, _StateData, _Version) ->
 	{noreply, State}.
 
 %% handle_info/2
-handle_info(timeout, State=#state{mod=Mod, data=Data}, _StateData, _Version) ->
-	case read(Mod, Data) of
-		{ok, _StgData, ?STG_NO_VERSION, NewData} ->
-			{noreply, State#state{data=NewData}};
-		{ok, StgData, EncodedVersion, NewData} ->
-			Version = brick_hlc:decode(EncodedVersion),
-			StateData = convert_stg(StgData),
-			{noreply, State#state{data=NewData}, StateData, Version};
-		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
-	end;
-
 handle_info(_Info, State, _StateData, _Version) ->
 	{noreply, State}.
 
@@ -134,14 +123,21 @@ code_change(OldVsn, State=#state{mod=Mod, data=Data}, StateData, Version, Extra)
 %% brick_phoenix workflow
 %% ====================================================================
 
-%% reborn/3
-reborn([], StateData, Version) ->
-	Mod = brick_config:get_env(storage_handler),
-	Config = brick_config:get_env(storage_handler_config),
-	case init(Mod, Config) of
-		{ok, Data} -> {ok, #state{mod=Mod, data=Data}, StateData, Version};
-		{stop, Reason} -> {stop, Reason}
+%% elected/1
+elected(State=#state{mod=Mod, data=Data}) ->
+	case read(Mod, Data) of
+		{ok, _StgData, ?STG_NO_VERSION, NewData} ->
+			{ok, State#state{data=NewData}, dict:new(), ?NO_TIMESTAMP};
+		{ok, StgData, EncodedVersion, NewData} ->
+			Version = brick_hlc:decode(EncodedVersion),
+			StateData = convert_stg(StgData),
+			{noreply, State#state{data=NewData}, StateData, Version};
+		{stop, _Reason, NewData} -> {stop, mod_return, State#state{data=NewData}}
 	end.
+
+%% reborn/3
+reborn(State, StateData, Version) ->
+	{ok, State, StateData, Version}.
 
 %% handle_state_update/2
 handle_state_update(State=#state{mod=Mod, data=Data}, NewStateData, Version) ->
