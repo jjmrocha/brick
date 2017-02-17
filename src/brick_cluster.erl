@@ -156,11 +156,21 @@ handle_info({update}, State=#state{cluster_nodes=ClusterNodes, online_nodes=Onli
 
 handle_info(timeout, State) ->
 	net_kernel:monitor_nodes(true),
-	brick_state:subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE),
 	ClusterNodes = case brick_state:read_state(?BRICK_CLUSTER_TOPOLOGY_STATE) of
-		{ok, Topology, _Version} -> Topology;
-		_ -> [node()]
+		not_found ->
+			Topology = [node()],
+			brick_state:save_state(?BRICK_CLUSTER_TOPOLOGY_STATE, Topology),
+			Topology;
+		{ok, Topology} ->
+			case lists:member(node(), Topology) of
+				true -> Topology;
+				false ->
+					NewTopology = [node()|Topology],
+					brick_state:save_state(?BRICK_CLUSTER_TOPOLOGY_STATE, NewTopology),
+					NewTopology
+			end
 	end,
+	brick_state:subscribe_state_events(?BRICK_CLUSTER_TOPOLOGY_STATE),
 	{ok, OnlineNodes} = online_nodes(ClusterNodes, []),
 	{noreply, State#state{cluster_nodes=ClusterNodes, online_nodes=OnlineNodes}};
 

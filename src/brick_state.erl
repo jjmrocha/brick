@@ -72,7 +72,7 @@ init([]) ->
 handle_call({read, StateName}, _From, State, StateData, _Version) ->
 	case dict:find(StateName, StateData) of
 		{ok, StateValue} -> {reply, {ok, StateValue}, State};
-		false -> {reply, not_found, State}
+		error -> {reply, not_found, State}
 	end;
 
 handle_call({state_names}, _From, State, StateData, _Version) ->
