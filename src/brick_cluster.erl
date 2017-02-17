@@ -19,7 +19,7 @@
 -include("brick_log.hrl").
 -include("brick_event.hrl").
 
--define(BRICK_CLUSTER_TOPOLOGY_STATE, 'brick_cluster').
+-define(BRICK_CLUSTER_TOPOLOGY_STATE, ?MODULE).
 -define(CLUSTER_EVENTS, [?BRICK_NEW_NODE_EVENT, ?BRICK_NODE_DELETED_EVENT, ?BRICK_NODE_UP_EVENT, ?BRICK_NODE_DOWN_EVENT]).
 
 -behaviour(gen_server).

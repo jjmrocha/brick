@@ -87,6 +87,8 @@
 -export([cast_master/2, cast_local/2]).
 -export([send_master/2, send_local/2]).
 
+-export([is_master/1, cluster_state/1, timestamp/1]).
+
 start_link(Name, Mod, Args) ->
 	validate_name(Name),
 	LocalName = local_name(Name),
@@ -129,6 +131,23 @@ send_local(Name, Msg) when is_atom(Name) ->
 send_local(Name, Msg) ->
 	send_local(local_name(Name), Msg).
 
+%% DEBUG Functions
+
+is_master(Name) when is_atom(Name) ->
+	gen_server:call(Name, {?MODULE, is_master});
+is_master(Name) ->
+	is_master(local_name(Name)).
+
+cluster_state(Name) when is_atom(Name) ->
+	gen_server:call(Name, {?MODULE, cluster_state});
+cluster_state(Name) ->
+	cluster_state(local_name(Name)).
+
+timestamp(Name) when is_atom(Name) ->
+	gen_server:call(Name, {?MODULE, timestamp});
+timestamp(Name) ->
+	timestamp(local_name(Name)).
+
 %% ====================================================================
 %% Behavioural functions
 %% ====================================================================
@@ -139,7 +158,7 @@ send_local(Name, Msg) ->
 
 -define(STATUS_UPDATE_QUEUE, '$brick_phoenix_async_queue').
 -define(UPDATE_MSG(Data, Timestamp), {'$brick_phoenix_update_data', Data, Timestamp}).
--define(WELCOME_MSG(From), {'$brick_phoenix_welcome', From}).
+-define(WELCOME_MSG(Slave), {'$brick_phoenix_welcome', Slave}).
 
 -record(state, {name,
 		mod,
@@ -166,6 +185,20 @@ init([Name, Mod, Args]) ->
 	end.
 
 %% handle_call/3
+handle_call(?WELCOME_MSG(Slave), _From, State=#state{cdata=ClusterState, ts=TS, role=?ROLE_MASTER}) ->
+	State1 = #state{slaves=SlaveList} = monitor_pid(State, Slave),
+	SlaveList1 = brick_util:iif(lists:member(Slave, SlaveList), SlaveList, [Slave|SlaveList]),
+	{reply, ?UPDATE_MSG(ClusterState, TS), State1#state{slaves=SlaveList1}};
+
+handle_call({?MODULE, is_master}, _From, State=#state{role=Role}) ->
+	{reply, Role =:= ?ROLE_MASTER, State};
+
+handle_call({?MODULE, cluster_state}, _From, State=#state{cdata=ClusterState}) ->
+	{reply, ClusterState, State};
+
+handle_call({?MODULE, timestamp}, _From, State=#state{ts=TS}) ->
+	{reply, TS, State};
+
 handle_call(Request, From, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
 	Reply = Mod:handle_call(Request, From, ProcessState, ClusterState, TS),
 	handle_reply(Reply, State);
@@ -174,24 +207,8 @@ handle_call(_Request, _From, State) ->
 	{noreply, State, hibernate}.
 
 %% handle_cast/2
-handle_cast(?WELCOME_MSG(From), State=#state{cdata=ClusterState, ts=TS, role=?ROLE_MASTER}) ->
-	gen_server:cast(From, ?UPDATE_MSG(ClusterState, TS)),
-	State1 = #state{slaves=SlaveList} = monitor_pid(State, From),
-	SlaveList1 = brick_util:iif(lists:member(From, SlaveList), SlaveList, [From|SlaveList]),
-	{noreply, State1#state{slaves=SlaveList1}};
-
-handle_cast(?UPDATE_MSG(NewClusterState, NewTS), State=#state{mod=Mod, pdata=ProcessState, role=?ROLE_SLAVE, run_update_handler=true}) ->
-	brick_hlc:update(NewTS),
-	case Mod:handle_state_update(ProcessState, NewClusterState, NewTS) of
-		{ok, NewProcessState} ->
-			{noreply, State#state{pdata=NewProcessState, cdata=NewClusterState, ts=NewTS}};
-		{error, Reason} ->
-			{stop, Reason, State}
-	end;
-
 handle_cast(?UPDATE_MSG(NewClusterState, NewTS), State=#state{role=?ROLE_SLAVE}) ->
-	brick_hlc:update(NewTS),
-	{noreply, State#state{cdata=NewClusterState, ts=NewTS}};
+	handle_update(NewClusterState, NewTS, State);
 
 handle_cast(Msg, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS}) ->
 	Reply = Mod:handle_cast(Msg, ProcessState, ClusterState, TS),
@@ -217,9 +234,9 @@ handle_info(?RESOLVE_REQUEST(From, Ref), State=#state{slaves=SlaveList, ts=TS}) 
 
 handle_info(Info = {'DOWN', MRef, _, _, _}, State=#state{mod=Mod, pdata=ProcessState, cdata=ClusterState, ts=TS, role=?ROLE_SLAVE}) ->
 	case remove_ref(State, MRef) of
-		ignore -> 
+		ignore ->
 			Reply = Mod:handle_info(Info, ProcessState, ClusterState, TS),
-			handle_reply(Reply, State);			
+			handle_reply(Reply, State);
 		{_, State1} -> {noreply, State1, 0}
 	end;
 
@@ -253,8 +270,11 @@ handle_info(Info = timeout, State=#state{name=Name, mod=Mod, role=Role, pdata=Pr
 					case brick_util:whereis_name(Name) of
 						undefined -> {noreply, State, 0};
 						Pid ->
-							gen_server:cast(Pid, ?WELCOME_MSG(self())),
-							{noreply, monitor_pid(State#state{role=?ROLE_SLAVE}, Pid)}
+							case gen_server:call(Pid, ?WELCOME_MSG(self()), 1000) of
+								?UPDATE_MSG(NewClusterState, NewTS) ->
+									handle_update(NewClusterState, NewTS, monitor_pid(State#state{role=?ROLE_SLAVE}, Pid));
+								_ -> {noreply, State, 0}
+							end
 					end
 			end;
 		_ ->
@@ -350,6 +370,18 @@ handle_reply({stop, Reason, Reply, NewProcessState}, State) ->
 handle_reply({stop, Reason, NewProcessState}, State) ->
 	{stop, Reason, update_state(NewProcessState, State)};
 handle_reply(Other, _State) -> Other.
+
+handle_update(NewClusterState, NewTS, State=#state{mod=Mod, pdata=ProcessState, run_update_handler=true}) ->
+	brick_hlc:update(NewTS),
+	case Mod:handle_state_update(ProcessState, NewClusterState, NewTS) of
+		{ok, NewProcessState} ->
+			{noreply, State#state{pdata=NewProcessState, cdata=NewClusterState, ts=NewTS}};
+		{error, Reason} ->
+			{stop, Reason, State}
+	end;
+handle_update(NewClusterState, NewTS, State) ->
+	brick_hlc:update(NewTS),
+	{noreply, State#state{cdata=NewClusterState, ts=NewTS}}.
 
 update_state(NewProcessState, NewClusterState, NewTS, State=#state{role=?ROLE_MASTER}) ->
 	uppdate_slaves(State#state.slaves, NewClusterState, NewTS),
